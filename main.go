@@ -1,26 +1,70 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"github.com/Regis-Caelum/drive-sync/daemon"
 	"github.com/Regis-Caelum/drive-sync/database"
 	"github.com/Regis-Caelum/drive-sync/models"
-	"github.com/Regis-Caelum/drive-sync/utils"
+	"os/exec"
 	"sync"
 )
 
 func main() {
-	//database.ClearDatabase(database.DB)
-	{
-		dirPath := "/home/regis/Desktop/projects/models"
-		var wg = new(sync.WaitGroup)
-		wg.Add(1)
-		go utils.WatchDirs(wg)
-		utils.AddDirToWatch(dirPath)
+	//prepForTest()
+	prepForProd()
+}
 
-		printNodesAndClosure()
-
-		wg.Wait()
+func prepForTest() {
+	database.ClearDatabase(database.DB)
+	cmd := exec.Command("mkdir", "./models/test")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err := cmd.Run()
+	if err != nil {
+		fmt.Println("Error running command:", err)
+		return
 	}
+	fmt.Println(out.String())
+
+	cmd = exec.Command("touch", "./models/test/test.txt")
+	cmd.Stdout = &out
+	err = cmd.Run()
+	if err != nil {
+		fmt.Println("Error running command:", err)
+		return
+	}
+	fmt.Println(out.String())
+
+	cmd = exec.Command("mkdir", "./models/test/test")
+	cmd.Stdout = &out
+	err = cmd.Run()
+	if err != nil {
+		fmt.Println("Error running command:", err)
+		return
+	}
+	fmt.Println(out.String())
+
+	cmd = exec.Command("touch", "./models/test/test/test.txt")
+	cmd.Stdout = &out
+	err = cmd.Run()
+	if err != nil {
+		fmt.Println("Error running command:", err)
+		return
+	}
+	fmt.Println(out.String())
+}
+
+func prepForProd() {
+	dirPath := "/home/regis/Desktop/projects/models"
+	var wg = new(sync.WaitGroup)
+	wg.Add(1)
+	go daemon.StartDaemon(wg)
+	daemon.AddDirToWatch(dirPath)
+
+	printNodesAndClosure()
+
+	wg.Wait()
 }
 
 func printNodesAndClosure() {
