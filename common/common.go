@@ -17,9 +17,7 @@ const (
 
 const (
 	UPDATE_NODES ActionType = iota
-	DELETE_NODE
 	UPDATE_WATCHLIST
-	DELETE_WATCHLIST
 )
 
 func PathExist(absPath string) bool {
