@@ -6,10 +6,12 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"log"
+	"sync"
 )
 
 var (
-	DB *gorm.DB
+	DB      *gorm.DB
+	dbMutex *sync.Mutex
 )
 
 func init() {
@@ -18,6 +20,18 @@ func init() {
 	if err != nil {
 		log.Fatal("failed to connect database:", err)
 	}
+	dbMutex = new(sync.Mutex)
+
+	// Set up the connection pool
+	sqlDB, err := DB.DB()
+	if err != nil {
+		log.Fatal("failed to get SQL DB from GORM DB:", err)
+	}
+
+	sqlDB.SetMaxOpenConns(5)    // SQLite should have only one open connection at a time
+	sqlDB.SetMaxIdleConns(1)    // One idle connection (same as max open conns)
+	sqlDB.SetConnMaxLifetime(0) // Connection lifetime - 0 means connections are reused forever
+	sqlDB.SetConnMaxIdleTime(0) // Idle time - 0 means no limit on how long a connection can be idle
 
 	// Migrate the schema
 	err = DB.AutoMigrate(
@@ -57,6 +71,24 @@ func resetSequences(db *gorm.DB) {
 	}
 }
 
-func GetTx() *gorm.DB {
-	return DB.Begin()
+func GetTx() (*gorm.DB, error) {
+	dbMutex.Lock()
+	tx := DB.Begin()
+	if tx.Error != nil {
+		dbMutex.Unlock() // Unlock immediately if transaction cannot be started
+		return nil, tx.Error
+	}
+	return tx, nil
+}
+
+func CommitTx(tx *gorm.DB) {
+	err := tx.Commit().Error
+	if err != nil {
+		log.Println("Error committing transaction:", err)
+	}
+	dbMutex.Unlock() // Only unlock if transaction was successfully committed
+}
+
+func RollbackTx(tx *gorm.DB) {
+	tx.Rollback()
 }
