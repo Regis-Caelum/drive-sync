@@ -2,24 +2,32 @@ package main
 
 import (
 	"fmt"
+	"github.com/Regis-Caelum/drive-sync/database"
+	"github.com/Regis-Caelum/drive-sync/models"
 	"github.com/Regis-Caelum/drive-sync/utils"
+	"sync"
 )
 
-func traverseDir(path string) error {
-	tree, err := utils.BuildTree(path)
-	if err != nil {
-		return err
-	}
+func main() {
+	//database.ClearDatabase(database.DB)
+	{
+		dirPath := "/home/regis/Desktop/projects/models"
+		var wg = new(sync.WaitGroup)
+		wg.Add(1)
+		go utils.WatchDirs(wg)
+		utils.AddDirToWatch(dirPath)
 
-	utils.PrintTree(tree, 0)
-	return nil
+		printNodesAndClosure()
+
+		wg.Wait()
+	}
 }
 
-func main() {
-	dirPath := "./"
-
-	err := traverseDir(dirPath)
-	if err != nil {
-		fmt.Printf("Error traversing directory: %v\n", err)
+func printNodesAndClosure() {
+	var nodes []models.Node
+	database.DB.Find(&nodes)
+	fmt.Println("Nodes:")
+	for _, node := range nodes {
+		fmt.Printf("ID: %d, Name: %s, IsDir: %t, Path: %s\n", node.ID, node.Name, node.IsDir, node.AbsolutePath)
 	}
 }
