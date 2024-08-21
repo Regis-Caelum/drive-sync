@@ -6,12 +6,10 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"log"
-	"sync"
 )
 
 var (
-	DB      *gorm.DB
-	dbMutex *sync.Mutex
+	DB *gorm.DB
 )
 
 func init() {
@@ -20,7 +18,6 @@ func init() {
 	if err != nil {
 		log.Fatal("failed to connect database:", err)
 	}
-	dbMutex = new(sync.Mutex)
 
 	// Set up the connection pool
 	sqlDB, err := DB.DB()
