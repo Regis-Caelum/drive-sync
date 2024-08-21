@@ -5,8 +5,6 @@ import (
 )
 
 func PathExist(absPath string) bool {
-	if _, err := os.Stat(absPath); os.IsNotExist(err) {
-		return false
-	}
-	return true
+	_, err := os.Stat(absPath)
+	return !os.IsNotExist(err)
 }

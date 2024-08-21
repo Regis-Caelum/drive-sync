@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"fmt"
+	"github.com/Regis-Caelum/drive-sync/common"
 	"github.com/Regis-Caelum/drive-sync/constants"
 	"github.com/Regis-Caelum/drive-sync/database"
 	"github.com/Regis-Caelum/drive-sync/models"
@@ -24,13 +25,11 @@ type SharedResources struct {
 var Channel chan bool
 var sharedResources *SharedResources
 var watcher *fsnotify.Watcher
-var updateChanel chan constants.ActionType
+var updateChannel chan constants.ActionType
 
 func initializeWatchList() error {
-	// Initialize the map
 	sharedResources.watchListMap = make(WatchListMap)
 
-	// Retrieve all entries from the database
 	var watchList []*models.WatchList
 	result := database.DB.Find(&watchList)
 	if result.Error != nil {
@@ -42,13 +41,20 @@ func initializeWatchList() error {
 	}
 	sharedResources.mutex.Unlock()
 
+	for _, watch := range watchList {
+		if common.PathExist(watch.AbsolutePath) {
+			sharedResources.mutex.Lock()
+			delete(sharedResources.watchListMap, watch.AbsolutePath)
+			sharedResources.mutex.Unlock()
+		}
+	}
+
 	return nil
 }
 
 func initializeNodes() error {
 	sharedResources.nodesMap = make(NodesMap)
 
-	// Retrieve all entries from the database
 	var nodes []*models.Node
 	result := database.DB.Find(&nodes)
 	if result.Error != nil {
@@ -60,6 +66,14 @@ func initializeNodes() error {
 		sharedResources.nodesMap[item.AbsolutePath] = item
 	}
 	sharedResources.mutex.Unlock()
+
+	for _, node := range nodes {
+		if common.PathExist(node.AbsolutePath) {
+			sharedResources.mutex.Lock()
+			delete(sharedResources.nodesMap, node.AbsolutePath)
+			sharedResources.mutex.Unlock()
+		}
+	}
 
 	return nil
 }
@@ -79,7 +93,7 @@ func init() {
 		log.Fatal(err)
 	}
 
-	updateChanel = make(chan constants.ActionType, 10)
+	updateChannel = make(chan constants.ActionType, 10)
 
 	err = initializeWatchList()
 	if err != nil {
@@ -116,10 +130,6 @@ func (n NodesMap) deleteNodesMap() {
 	}
 	tx.Where("absolute_path NOT IN (?)", absolutePaths).Delete(&models.Node{})
 	database.CommitTx(tx)
-}
-
-func (n NodesMap) renameNodesMap() {
-
 }
 
 func (w WatchListMap) addWatchListMap() {
@@ -159,20 +169,6 @@ func (w WatchListMap) deleteWatchListMap() {
 	}
 	tx.Where("absolute_path NOT IN (?)", absolutePaths).Delete(&models.WatchList{})
 	database.CommitTx(tx)
-}
-
-func (w WatchListMap) renameWatchListMap() {
-
-}
-
-func TraverseDir(dirPath string) {
-	err := traverseDirHelper(dirPath)
-	if err != nil {
-		fmt.Printf("Error: %s", err)
-		return
-	}
-	updateChanel <- constants.AddNodes
-	updateChanel <- constants.AddWatchlist
 }
 
 func traverseDirHelper(dirPath string) error {
@@ -236,7 +232,7 @@ func StartDaemon(wg *sync.WaitGroup) {
 	go func() {
 		for {
 			select {
-			case updateChan := <-updateChanel:
+			case updateChan := <-updateChannel:
 				switch updateChan {
 				case constants.AddNodes:
 					go sharedResources.nodesMap.addNodesMap()
@@ -302,8 +298,8 @@ func AddDirToWatch(path string) {
 		if err != nil {
 			log.Println("Error:", err)
 		}
-		updateChanel <- constants.AddNodes
-		updateChanel <- constants.AddWatchlist
+		updateChannel <- constants.AddNodes
+		updateChannel <- constants.AddWatchlist
 	} else {
 		fmt.Printf("Path '%s' doesn't exist ", path)
 	}
@@ -311,19 +307,24 @@ func AddDirToWatch(path string) {
 
 func handleCreate(path string) {
 	if info, err := os.Stat(path); err == nil {
-		if info.IsDir() {
+		if _, exists := sharedResources.watchListMap[path]; !exists && info.IsDir() {
 			sharedResources.mutex.Lock()
 			sharedResources.watchListMap[path] = &models.WatchList{
 				Name:         info.Name(),
 				AbsolutePath: path,
 			}
 			sharedResources.mutex.Unlock()
+			err = traverseDirHelper(path)
+			if err != nil {
+				log.Println("Error:", err)
+			}
 			err = watcher.Add(path)
 			if err != nil {
 				log.Println("Error:", err)
 			}
-			updateChanel <- constants.AddWatchlist
-		} else {
+			updateChannel <- constants.AddWatchlist
+			updateChannel <- constants.AddNodes
+		} else if _, exists = sharedResources.nodesMap[path]; !exists {
 			sharedResources.mutex.Lock()
 			sharedResources.nodesMap[path] = &models.Node{
 				Name:         info.Name(),
@@ -333,7 +334,7 @@ func handleCreate(path string) {
 				AbsolutePath: path,
 			}
 			sharedResources.mutex.Unlock()
-			updateChanel <- constants.AddNodes
+			updateChannel <- constants.AddNodes
 		}
 	}
 }
@@ -343,20 +344,41 @@ func handleRemove(path string) {
 		sharedResources.mutex.Lock()
 		delete(sharedResources.watchListMap, path)
 		sharedResources.mutex.Unlock()
-		updateChanel <- constants.DeleteWatchlist
+		updateChannel <- constants.DeleteWatchlist
 		log.Println("Path deleted from watchlist: ", path)
 	} else if _, ok = sharedResources.nodesMap[path]; ok {
 		sharedResources.mutex.Lock()
 		delete(sharedResources.nodesMap, path)
 		sharedResources.mutex.Unlock()
-		updateChanel <- constants.DeleteNodes
+		updateChannel <- constants.DeleteNodes
 		log.Println("Path deleted from nodes: ", path)
 	}
 }
 
 func handleRename(oldPath string) {
-	handleRemove(oldPath) // Remove the old entry
-	TraverseDir(oldPath)
+	if _, exists := sharedResources.watchListMap[oldPath]; exists {
+		for path := range sharedResources.watchListMap {
+			if strings.HasPrefix(path, oldPath) {
+				sharedResources.mutex.Lock()
+				delete(sharedResources.watchListMap, oldPath)
+				sharedResources.mutex.Unlock()
+			}
+		}
+		for path := range sharedResources.nodesMap {
+			if strings.HasPrefix(path, oldPath+"/") {
+				sharedResources.mutex.Lock()
+				delete(sharedResources.nodesMap, path)
+				sharedResources.mutex.Unlock()
+			}
+		}
+		updateChannel <- constants.DeleteWatchlist
+		updateChannel <- constants.DeleteNodes
+	} else {
+		sharedResources.mutex.Lock()
+		delete(sharedResources.nodesMap, oldPath)
+		sharedResources.mutex.Unlock()
+		updateChannel <- constants.DeleteNodes
+	}
 }
 
 func isHiddenPath(path string) bool {
