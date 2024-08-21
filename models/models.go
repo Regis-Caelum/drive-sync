@@ -1,14 +1,16 @@
 package models
 
-import "github.com/Regis-Caelum/drive-sync/common"
+import (
+	"github.com/Regis-Caelum/drive-sync/constants"
+)
 
 type Node struct {
-	ID           int               `gorm:"primaryKey"`
-	Name         string            `gorm:"not null"`
-	IsDir        bool              `gorm:"not null"`
-	FileStatus   common.FileStatus `gorm:"not null"`
-	UploadStatus common.FileStatus `gorm:"not null"`
-	AbsolutePath string            `gorm:"not null;unique"`
+	ID           int                  `gorm:"primaryKey"`
+	Name         string               `gorm:"not null"`
+	IsDir        bool                 `gorm:"not null"`
+	FileStatus   constants.FileStatus `gorm:"not null"`
+	UploadStatus constants.FileStatus `gorm:"not null"`
+	AbsolutePath string               `gorm:"not null;unique"`
 }
 
 type WatchList struct {
