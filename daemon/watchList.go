@@ -41,13 +41,15 @@ func initializeWatchList() error {
 	}
 	sharedResources.mutex.Unlock()
 
-	for _, watch := range watchList {
-		if common.PathExist(watch.AbsolutePath) {
+	for path := range sharedResources.watchListMap {
+		if !common.PathExist(path) {
 			sharedResources.mutex.Lock()
-			delete(sharedResources.watchListMap, watch.AbsolutePath)
+			delete(sharedResources.watchListMap, path)
 			sharedResources.mutex.Unlock()
 		}
 	}
+
+	updateChannel <- constants.DeleteWatchlist
 
 	return nil
 }
@@ -67,13 +69,15 @@ func initializeNodes() error {
 	}
 	sharedResources.mutex.Unlock()
 
-	for _, node := range nodes {
-		if common.PathExist(node.AbsolutePath) {
+	for path := range sharedResources.nodesMap {
+		if !common.PathExist(path) {
 			sharedResources.mutex.Lock()
-			delete(sharedResources.nodesMap, node.AbsolutePath)
+			delete(sharedResources.nodesMap, path)
 			sharedResources.mutex.Unlock()
 		}
 	}
+
+	updateChannel <- constants.DeleteNodes
 
 	return nil
 }
@@ -81,7 +85,9 @@ func initializeNodes() error {
 func init() {
 	sharedResources = new(SharedResources)
 	sharedResources.mutex = new(sync.Mutex)
+	updateChannel = make(chan constants.ActionType, 10)
 	Channel = make(chan bool)
+	go DBDaemon()
 
 	err := initializeNodes()
 	if err != nil {
@@ -92,8 +98,6 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	updateChannel = make(chan constants.ActionType, 10)
 
 	err = initializeWatchList()
 	if err != nil {
@@ -229,32 +233,14 @@ func StartDaemon(wg *sync.WaitGroup) {
 		wg.Done()
 	}(watcher)
 
-	go func() {
-		for {
-			select {
-			case updateChan := <-updateChannel:
-				switch updateChan {
-				case constants.AddNodes:
-					go sharedResources.nodesMap.addNodesMap()
-				case constants.AddWatchlist:
-					go sharedResources.watchListMap.addWatchListMap()
-				case constants.DeleteNodes:
-					go sharedResources.nodesMap.deleteNodesMap()
-				case constants.DeleteWatchlist:
-					go sharedResources.watchListMap.deleteWatchListMap()
-				default:
-					continue
-				}
-			}
-		}
-	}()
-
-	for _, watchList := range sharedResources.watchListMap {
-		err := traverseDirHelper(watchList.AbsolutePath)
+	for path := range sharedResources.watchListMap {
+		err := traverseDirHelper(path)
 		if err != nil {
 			log.Println("Error: ", err)
 		}
 	}
+	updateChannel <- constants.AddWatchlist
+	updateChannel <- constants.AddNodes
 	Channel <- true
 
 	for {
@@ -263,6 +249,26 @@ func StartDaemon(wg *sync.WaitGroup) {
 			go handleEvent(event)
 		case err := <-watcher.Errors:
 			fmt.Println("Error:", err)
+		}
+	}
+}
+
+func DBDaemon() {
+	for {
+		select {
+		case updateChan := <-updateChannel:
+			switch updateChan {
+			case constants.AddNodes:
+				go sharedResources.nodesMap.addNodesMap()
+			case constants.AddWatchlist:
+				go sharedResources.watchListMap.addWatchListMap()
+			case constants.DeleteNodes:
+				go sharedResources.nodesMap.deleteNodesMap()
+			case constants.DeleteWatchlist:
+				go sharedResources.watchListMap.deleteWatchListMap()
+			default:
+				continue
+			}
 		}
 	}
 }

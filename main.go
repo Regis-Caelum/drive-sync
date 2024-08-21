@@ -17,7 +17,7 @@ func main() {
 
 func prepForTest() {
 	database.ClearDatabase(database.DB)
-	cmd := exec.Command("mkdir", "./models/test")
+	cmd := exec.Command("mkdir", "./models/text")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	err := cmd.Run()
@@ -27,7 +27,7 @@ func prepForTest() {
 	}
 	fmt.Println(out.String())
 
-	cmd = exec.Command("touch", "./models/test/test.txt")
+	cmd = exec.Command("touch", "./models/text/text.txt")
 	cmd.Stdout = &out
 	err = cmd.Run()
 	if err != nil {
@@ -36,7 +36,7 @@ func prepForTest() {
 	}
 	fmt.Println(out.String())
 
-	cmd = exec.Command("mkdir", "./models/test/test")
+	cmd = exec.Command("mkdir", "./models/text/text")
 	cmd.Stdout = &out
 	err = cmd.Run()
 	if err != nil {
@@ -45,7 +45,7 @@ func prepForTest() {
 	}
 	fmt.Println(out.String())
 
-	cmd = exec.Command("touch", "./models/test/test/test.txt")
+	cmd = exec.Command("touch", "./models/text/text/text.txt")
 	cmd.Stdout = &out
 	err = cmd.Run()
 	if err != nil {
@@ -56,12 +56,12 @@ func prepForTest() {
 }
 
 func prepForProd() {
-	dirPath := "/home/regis/Desktop/projects/models"
+	//dirPath := "/home/regis/Desktop/projects/models"
 	var wg = new(sync.WaitGroup)
 	wg.Add(1)
 	go daemon.StartDaemon(wg)
 	<-daemon.Channel
-	daemon.AddDirToWatch(dirPath)
+	//daemon.AddDirToWatch(dirPath)
 
 	printNodesAndClosure()
 
