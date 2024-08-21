@@ -60,6 +60,7 @@ func prepForProd() {
 	var wg = new(sync.WaitGroup)
 	wg.Add(1)
 	go daemon.StartDaemon(wg)
+	<-daemon.Channel
 	daemon.AddDirToWatch(dirPath)
 
 	printNodesAndClosure()
