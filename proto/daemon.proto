@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package generated;
+
+option  go_package = "generated/";
+
+enum FILE_STATUS {
+    UNMODIFIED = 0;
+    MODIFIED = 1;
+    UPLOADED = 3;
+    NOT_UPLOADED = 4;
+}
+
+enum FILE_ACTIONS {
+    ADD_NODES = 0;
+    DELETE_NODES = 1;
+    ADD_WATCHLIST = 2;
+    DELETE_WATCHLIST = 3;
+}
+
+enum ADD_DIRECTORY_STATUS {
+  PARTIAL = 0;
+  COMPLETE = 1;
+  FAILED = 2;
+}
+
+message Node {
+  int32 id = 1;
+  string name = 2;
+  bool is_dir = 3;
+  FILE_STATUS file_status = 4;
+  FILE_STATUS upload_status = 5;
+  string absolute_path = 6;
+}
+
+message WatchList {
+  int32 id = 1;
+  string name = 2;
+  string absolute_path = 3;
+}
+
+message PathList {
+  repeated string values = 1;
+}
+
+message FileList {
+  repeated WatchList directoryList = 1;
+  repeated Node fileList = 2;
+}
+
+message AddDirectoryResponse {
+  ADD_DIRECTORY_STATUS status = 1;
+  string error = 2;
+  string path = 3;
+}
+message ResponseList {
+  repeated AddDirectoryResponse values = 1;
+}
+
+message Empty {}
+
+service WatchListService {
+  rpc GetWatchList(Empty) returns (FileList);
+  rpc AddDirectoriesToWatchList(PathList) returns (ResponseList);
+}
