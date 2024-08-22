@@ -44,14 +44,14 @@ func (c *cmdAddDirectory) command() *cobra.Command {
 }
 
 func (c *cmdAddDirectory) run(_ *cobra.Command, args []string) error {
-	if len(args) <= 1 {
+	if len(args) < 1 {
 		fmt.Println("Insufficient arguments")
 		return nil
 	}
 
 	path := args
 	for idx, val := range args {
-		if common.PathExist(val) && common.IsDir(val) {
+		if !common.PathExist(val) || !common.IsDir(val) {
 			path = append(path[:idx], path[idx+1:]...)
 		}
 	}
