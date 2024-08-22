@@ -100,7 +100,7 @@ func (c *cmdGetList) run(cmd *cobra.Command, args []string) error {
 
 	if c.flagDirOnly {
 		for _, dir := range directoryList {
-			rows = append(rows, []string{dir.GetName(), "Yes", "", "", dir.GetAbsolutePath()})
+			rows = append(rows, []string{dir.GetName(), "Yes", pb.FILE_STATUS_UNTRACKED.String(), pb.FILE_STATUS_UNTRACKED.String(), dir.GetAbsolutePath()})
 		}
 	}
 

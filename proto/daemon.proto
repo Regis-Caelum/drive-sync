@@ -9,6 +9,7 @@ enum FILE_STATUS {
     MODIFIED = 1;
     UPLOADED = 3;
     NOT_UPLOADED = 4;
+    UNTRACKED = 5;
 }
 
 enum FILE_ACTIONS {
