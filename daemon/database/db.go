@@ -2,7 +2,7 @@ package database
 
 import (
 	"fmt"
-	"github.com/Regis-Caelum/drive-sync/cmd/dsync/model"
+	pb "github.com/Regis-Caelum/drive-sync/proto/generated"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"log"
@@ -14,7 +14,7 @@ var (
 
 func init() {
 	var err error
-	DB, err = gorm.Open(sqlite.Open("./database/database.sqlite"), &gorm.Config{})
+	DB, err = gorm.Open(sqlite.Open("./daemon/database/database.sqlite"), &gorm.Config{})
 	if err != nil {
 		log.Fatal("failed to connect database:", err)
 	}
@@ -29,8 +29,8 @@ func init() {
 	sqlDB.SetConnMaxLifetime(0)
 	sqlDB.SetConnMaxIdleTime(0)
 	err = DB.AutoMigrate(
-		&model.Node{},
-		&model.WatchList{})
+		&pb.Node{},
+		&pb.WatchList{})
 	if err != nil {
 		fmt.Println("Error:", err)
 	}
