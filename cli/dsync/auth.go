@@ -1,11 +1,16 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
-	"github.com/Regis-Caelum/drive-sync/cli/dsync/common"
 	pb "github.com/Regis-Caelum/drive-sync/proto/generated"
 	"github.com/spf13/cobra"
 	"golang.org/x/net/context"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
+	"google.golang.org/api/drive/v3"
+	"log"
+	"os"
 )
 
 type cmdAuth struct {
@@ -14,14 +19,14 @@ type cmdAuth struct {
 
 func (c *cmdAuth) command() *cobra.Command {
 	cmd := new(cobra.Command)
-	cmd.Use = "add"
-	cmd.Short = "Connect to drive daemon"
-	cmd.Long = common.FormatSection("Description", `Get watch lists from dsync daemon.`)
+	cmd.Use = "auth"
+	cmd.Short = "Command to invoke authentication actions for dsync"
 
-	getListCmd := cmdLogin{global: c.global, login: c}
-	cmd.AddCommand(getListCmd.command())
+	loginCmd := cmdLogin{global: c.global, auth: c}
+	cmd.AddCommand(loginCmd.command())
 
 	cmd.Args = cobra.NoArgs
+	cmd.DisableFlagsInUseLine = true
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		_ = cmd.Usage()
 		return nil
@@ -31,30 +36,21 @@ func (c *cmdAuth) command() *cobra.Command {
 
 type cmdLogin struct {
 	global *cmdGlobal
-	login  *cmdAuth
+	auth   *cmdAuth
 }
 
 func (c *cmdLogin) command() *cobra.Command {
 	cmd := new(cobra.Command)
-	cmd.Use = fmt.Sprint("dir <PATH> <PATH> ...")
-	cmd.Short = "Get the directories that are being watched"
+	cmd.Use = fmt.Sprint("login")
+	cmd.Short = "Login to google and authorize the cli access to google drive"
 
+	cmd.Args = cobra.NoArgs
 	cmd.RunE = c.run
 	return cmd
 }
 
 func (c *cmdLogin) run(_ *cobra.Command, args []string) error {
-	if len(args) <= 1 {
-		fmt.Println("Insufficient arguments")
-		return nil
-	}
-
-	path := args
-	for idx, val := range args {
-		if common.PathExist(val) && common.IsDir(val) {
-			path = append(path[:idx], path[idx+1:]...)
-		}
-	}
+	ctx := context.Background()
 
 	err := c.global.initGrpcClient()
 	if err != nil {
@@ -62,35 +58,62 @@ func (c *cmdLogin) run(_ *cobra.Command, args []string) error {
 	}
 	defer c.global.closeGrpcClient()
 
-	client := pb.NewWatchListServiceClient(c.global.conn)
+	client := pb.NewAuthenticationServiceClient(c.global.conn)
 
-	req := &pb.PathList{Values: path}
-	resp, err := client.AddDirectoriesToWatchList(context.Background(), req)
+	authToken, err := client.GetToken(ctx, &pb.Empty{})
 	if err != nil {
 		fmt.Println("Error: ", err)
-		return fmt.Errorf("failed to connect to dsync daemon: %s", err)
+		return err
 	}
-	directoryResponses := resp.GetValues()
-	if len(directoryResponses) <= 0 {
-		fmt.Println(common.FormatSection("No directories were added", `You can add directories to watchlist by using the dsync add -d <absolute_path_to_directory> command`))
+
+	if authToken.GetValue() != "" {
+		fmt.Println("User already logged in.")
 		return nil
 	}
 
-	fmt.Println("Result:")
-	var headers []string
-	var rows [][]string
-
-	headers = []string{
-		"Path",
-		"Status",
-		"Error",
+	fmt.Println("User not logged in.")
+	b, err := os.ReadFile("credentials.json")
+	if err != nil {
+		log.Fatalf("Unable to read client secret file: %v", err)
 	}
 
-	for _, dir := range directoryResponses {
-		rows = append(rows, []string{dir.GetPath(), dir.GetStatus().String(), dir.GetError()})
+	config, err := google.ConfigFromJSON(b, drive.DriveScope)
+	if err != nil {
+		log.Fatalf("Unable to parse client secret file to config: %v", err)
 	}
 
-	common.PrintTable(headers, rows)
+	token := getTokenFromWeb(config)
+	jsonToken, err := json.Marshal(&token)
+	if err != nil {
+		fmt.Println("Error: ", err)
+		return err
+	}
 
+	_, err = client.SaveToken(ctx, &pb.OAuth2Token{
+		Value: string(jsonToken),
+	})
+	if err != nil {
+		fmt.Println("Error: ", err)
+		return err
+	}
+
+	fmt.Println("Successfully logged in.")
 	return nil
+}
+
+func getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
+	authURL := config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
+	fmt.Printf("Go to the following link in your browser then type the "+
+		"authorization code: \n%v\n", authURL)
+
+	var authCode string
+	if _, err := fmt.Scan(&authCode); err != nil {
+		log.Fatalf("Unable to read authorization code %v", err)
+	}
+
+	tok, err := config.Exchange(context.TODO(), authCode)
+	if err != nil {
+		log.Fatalf("Unable to retrieve token from web %v", err)
+	}
+	return tok
 }
