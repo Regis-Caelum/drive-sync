@@ -1,12 +1,19 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/Regis-Caelum/drive-sync/daemon/common"
 	"github.com/Regis-Caelum/drive-sync/daemon/database"
 	pb "github.com/Regis-Caelum/drive-sync/proto/generated"
 	"github.com/fsnotify/fsnotify"
+	"golang.org/x/net/context"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
+	"google.golang.org/api/drive/v3"
+	"google.golang.org/api/option"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,10 +28,12 @@ type SharedResources struct {
 	mutex        *sync.Mutex
 }
 
-var Channel chan bool
+var daemonChannel chan bool
+var fileMasterChannel chan pb.FILE_ACTIONS
+
 var sharedResources *SharedResources
 var watcher *fsnotify.Watcher
-var updateChannel chan pb.FILE_ACTIONS
+var token *pb.OAuth2Token
 
 func initializeWatchList() error {
 	sharedResources.watchListMap = make(WatchListMap)
@@ -48,7 +57,7 @@ func initializeWatchList() error {
 		}
 	}
 
-	updateChannel <- pb.FILE_ACTIONS_DELETE_WATCHLIST
+	fileMasterChannel <- pb.FILE_ACTIONS_DELETE_WATCHLIST
 
 	return nil
 }
@@ -76,7 +85,7 @@ func initializeNodes() error {
 		}
 	}
 
-	updateChannel <- pb.FILE_ACTIONS_DELETE_NODES
+	fileMasterChannel <- pb.FILE_ACTIONS_DELETE_NODES
 
 	return nil
 }
@@ -84,11 +93,27 @@ func initializeNodes() error {
 func init() {
 	sharedResources = new(SharedResources)
 	sharedResources.mutex = new(sync.Mutex)
-	updateChannel = make(chan pb.FILE_ACTIONS, 10)
-	Channel = make(chan bool)
-	go dbDaemon()
+	token = new(pb.OAuth2Token)
+	fileMasterChannel = make(chan pb.FILE_ACTIONS, 10)
+	daemonChannel = make(chan bool)
 
-	err := initializeNodes()
+	tx, err := database.GetTx()
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
+	tx.First(token)
+	if token.GetValue() != "" {
+		syncWithDrive()
+	} else {
+		fmt.Println("cannot sync files, no drive connected")
+	}
+	database.CommitTx(tx)
+
+	go fileUpdateDaemon()
+
+	err = initializeNodes()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -223,25 +248,6 @@ func traverseDirHelper(dirPath string) error {
 	return nil
 }
 
-func handleEvent(event fsnotify.Event) {
-	if event.Op&fsnotify.Create == fsnotify.Create {
-		fmt.Println("Directory/File created:", event.Name)
-		handleCreate(event.Name)
-
-	} else if event.Op&fsnotify.Remove == fsnotify.Remove {
-		fmt.Println("Directory/File removed:", event.Name)
-		handleRemove(event.Name)
-
-	} else if event.Op&fsnotify.Rename == fsnotify.Rename {
-		fmt.Println("Directory/File renamed or moved:", event.Name)
-		handleRename(event.Name)
-
-	} else if event.Op&fsnotify.Write == fsnotify.Write {
-		fmt.Println("Directory/File modified:", event.Name)
-
-	}
-}
-
 func handleCreate(path string) {
 	if info, err := os.Stat(path); err == nil {
 		if _, exists := sharedResources.watchListMap[path]; !exists && info.IsDir() {
@@ -259,8 +265,8 @@ func handleCreate(path string) {
 			if err != nil {
 				log.Println("Error:", err)
 			}
-			updateChannel <- pb.FILE_ACTIONS_ADD_WATCHLIST
-			updateChannel <- pb.FILE_ACTIONS_ADD_NODES
+			fileMasterChannel <- pb.FILE_ACTIONS_ADD_WATCHLIST
+			fileMasterChannel <- pb.FILE_ACTIONS_ADD_NODES
 		} else if _, exists = sharedResources.nodesMap[path]; !exists {
 			sharedResources.mutex.Lock()
 			sharedResources.nodesMap[path] = &pb.Node{
@@ -271,7 +277,7 @@ func handleCreate(path string) {
 				AbsolutePath: path,
 			}
 			sharedResources.mutex.Unlock()
-			updateChannel <- pb.FILE_ACTIONS_ADD_NODES
+			fileMasterChannel <- pb.FILE_ACTIONS_ADD_NODES
 		}
 	}
 }
@@ -281,13 +287,13 @@ func handleRemove(path string) {
 		sharedResources.mutex.Lock()
 		delete(sharedResources.watchListMap, path)
 		sharedResources.mutex.Unlock()
-		updateChannel <- pb.FILE_ACTIONS_DELETE_WATCHLIST
+		fileMasterChannel <- pb.FILE_ACTIONS_DELETE_WATCHLIST
 		log.Println("Path deleted from watchlist: ", path)
 	} else if _, ok = sharedResources.nodesMap[path]; ok {
 		sharedResources.mutex.Lock()
 		delete(sharedResources.nodesMap, path)
 		sharedResources.mutex.Unlock()
-		updateChannel <- pb.FILE_ACTIONS_DELETE_NODES
+		fileMasterChannel <- pb.FILE_ACTIONS_DELETE_NODES
 		log.Println("Path deleted from nodes: ", path)
 	}
 }
@@ -308,20 +314,104 @@ func handleRename(oldPath string) {
 				sharedResources.mutex.Unlock()
 			}
 		}
-		updateChannel <- pb.FILE_ACTIONS_DELETE_WATCHLIST
-		updateChannel <- pb.FILE_ACTIONS_DELETE_NODES
+		fileMasterChannel <- pb.FILE_ACTIONS_DELETE_WATCHLIST
+		fileMasterChannel <- pb.FILE_ACTIONS_DELETE_NODES
 	} else {
 		sharedResources.mutex.Lock()
 		delete(sharedResources.nodesMap, oldPath)
 		sharedResources.mutex.Unlock()
-		updateChannel <- pb.FILE_ACTIONS_DELETE_NODES
+		fileMasterChannel <- pb.FILE_ACTIONS_DELETE_NODES
 	}
 }
 
-func dbDaemon() {
+func syncWithDrive() {
+	ctx := context.Background()
+
+	b, err := os.ReadFile("credentials.json")
+	if err != nil {
+		log.Fatalf("Unable to read client secret file: %v", err)
+	}
+
+	config, err := google.ConfigFromJSON(b, drive.DriveScope)
+	if err != nil {
+		log.Fatalf("Unable to parse client secret file to config: %v", err)
+	}
+
+	driveClient, err := getGDriveClient(config)
+	if err != nil {
+		fmt.Printf("Unable to get google drive client: %v", err)
+		return
+	}
+
+	driveService, err := drive.NewService(ctx, option.WithHTTPClient(driveClient))
+	if err != nil {
+		log.Fatalf("Unable to retrieve Drive client: %v", err)
+	}
+
+	r, err := driveService.Files.List().PageSize(10).
+		Fields("nextPageToken, files(id, name)").Do()
+	if err != nil {
+		log.Fatalf("Unable to retrieve files: %v", err)
+	}
+	fmt.Println("Files:")
+	if len(r.Files) == 0 {
+		fmt.Println("No files found.")
+	} else {
+		for _, i := range r.Files {
+			fmt.Printf("%s (%s)\n", i.Name, i.Id)
+		}
+	}
+}
+
+func getGDriveClient(config *oauth2.Config) (*http.Client, error) {
+	tok := &oauth2.Token{}
+	err := json.Unmarshal([]byte(token.GetValue()), tok)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return nil, err
+	}
+
+	return config.Client(context.Background(), tok), nil
+}
+
+func gDriveDaemon() {
+	tx, err := database.GetTx()
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	tx.First(token)
+	if token.GetValue() == "" {
+		fmt.Println("cannot sync files, no drive connected")
+	} else {
+
+	}
+	database.CommitTx(tx)
+}
+
+func handleEventDaemon(event fsnotify.Event) {
+	if event.Op&fsnotify.Create == fsnotify.Create {
+		fmt.Println("Directory/File created:", event.Name)
+		handleCreate(event.Name)
+
+	} else if event.Op&fsnotify.Remove == fsnotify.Remove {
+		fmt.Println("Directory/File removed:", event.Name)
+		handleRemove(event.Name)
+
+	} else if event.Op&fsnotify.Rename == fsnotify.Rename {
+		fmt.Println("Directory/File renamed or moved:", event.Name)
+		handleRename(event.Name)
+
+	} else if event.Op&fsnotify.Write == fsnotify.Write {
+		fmt.Println("Directory/File modified:", event.Name)
+
+	}
+}
+
+func fileUpdateDaemon() {
 	for {
 		select {
-		case updateChan := <-updateChannel:
+		case updateChan := <-fileMasterChannel:
 			switch updateChan {
 			case pb.FILE_ACTIONS_ADD_NODES:
 				go sharedResources.nodesMap.addNodesMap()
@@ -352,14 +442,14 @@ func daemon() {
 			log.Println("Error: ", err)
 		}
 	}
-	updateChannel <- pb.FILE_ACTIONS_ADD_WATCHLIST
-	updateChannel <- pb.FILE_ACTIONS_ADD_NODES
-	Channel <- true
+	fileMasterChannel <- pb.FILE_ACTIONS_ADD_WATCHLIST
+	fileMasterChannel <- pb.FILE_ACTIONS_ADD_NODES
+	daemonChannel <- true
 
 	for {
 		select {
 		case event := <-watcher.Events:
-			go handleEvent(event)
+			go handleEventDaemon(event)
 		case err := <-watcher.Errors:
 			fmt.Println("Error:", err)
 		}
