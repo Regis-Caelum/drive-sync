@@ -58,9 +58,19 @@ message ResponseList {
   repeated AddDirectoryResponse values = 1;
 }
 
+message OAuth2Token {
+  int32 id =1;
+  string value = 2;
+}
+
 message Empty {}
 
 service WatchListService {
   rpc GetWatchList(Empty) returns (FileList);
   rpc AddDirectoriesToWatchList(PathList) returns (ResponseList);
+}
+
+service AuthenticationService {
+  rpc SaveToken(OAuth2Token) returns (Empty);
+  rpc GetToken(Empty) returns (OAuth2Token);
 }
