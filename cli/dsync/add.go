@@ -18,8 +18,8 @@ func (c *cmdAdd) command() *cobra.Command {
 	cmd.Short = "Connect to drive daemon"
 	cmd.Long = common.FormatSection("Description", `Get watch lists from dsync daemon.`)
 
-	getListCmd := cmdAddDirectory{global: c.global, add: c}
-	cmd.AddCommand(getListCmd.command())
+	addCmd := cmdAddDir{global: c.global, add: c}
+	cmd.AddCommand(addCmd.command())
 
 	cmd.Args = cobra.NoArgs
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -29,12 +29,12 @@ func (c *cmdAdd) command() *cobra.Command {
 	return cmd
 }
 
-type cmdAddDirectory struct {
+type cmdAddDir struct {
 	global *cmdGlobal
 	add    *cmdAdd
 }
 
-func (c *cmdAddDirectory) command() *cobra.Command {
+func (c *cmdAddDir) command() *cobra.Command {
 	cmd := new(cobra.Command)
 	cmd.Use = fmt.Sprint("dir <PATH> <PATH> ...")
 	cmd.Short = "Get the directories that are being watched"
@@ -43,7 +43,7 @@ func (c *cmdAddDirectory) command() *cobra.Command {
 	return cmd
 }
 
-func (c *cmdAddDirectory) run(_ *cobra.Command, args []string) error {
+func (c *cmdAddDir) run(_ *cobra.Command, args []string) error {
 	if len(args) < 1 {
 		fmt.Println("Insufficient arguments")
 		return nil
