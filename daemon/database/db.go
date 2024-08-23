@@ -30,7 +30,8 @@ func init() {
 	sqlDB.SetConnMaxIdleTime(0)
 	err = DB.AutoMigrate(
 		&pb.Node{},
-		&pb.WatchList{})
+		&pb.WatchList{},
+		&pb.OAuth2Token{})
 	if err != nil {
 		fmt.Println("Error:", err)
 	}
