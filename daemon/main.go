@@ -15,9 +15,28 @@ var srv *grpc.Server
 
 type server struct {
 	pb.UnimplementedWatchListServiceServer
+	pb.UnimplementedAuthenticationServiceServer
 }
 
-func (s *server) GetWatchList(context.Context, *pb.Empty) (*pb.FileList, error) {
+func (s *server) SaveToken(ctx context.Context, in *pb.OAuth2Token) (*pb.Empty, error) {
+	tx, err := database.GetTx()
+	if err != nil {
+		fmt.Println("Error:", err)
+		return nil, fmt.Errorf("unabe to connect to database")
+	}
+	defer tx.Rollback()
+
+	in.Id = 1
+	tx.Save(in)
+	database.CommitTx(tx)
+	return &pb.Empty{}, nil
+}
+
+func (s *server) GetToken(ctx context.Context, in *pb.Empty) (*pb.OAuth2Token, error) {
+	return token, nil
+}
+
+func (s *server) GetWatchList(ctx context.Context, in *pb.Empty) (*pb.FileList, error) {
 	var watchList []*pb.WatchList
 	var nodeList []*pb.Node
 	var resp = &pb.FileList{}
@@ -62,8 +81,8 @@ func (s *server) AddDirectoriesToWatchList(ctx context.Context, in *pb.PathList)
 				})
 			}
 			fmt.Println("	✔")
-			updateChannel <- pb.FILE_ACTIONS_ADD_NODES
-			updateChannel <- pb.FILE_ACTIONS_ADD_WATCHLIST
+			fileMasterChannel <- pb.FILE_ACTIONS_ADD_NODES
+			fileMasterChannel <- pb.FILE_ACTIONS_ADD_WATCHLIST
 		} else {
 			fmt.Println("	❌")
 			resp.Values = append(resp.Values, &pb.AddDirectoryResponse{
@@ -79,12 +98,13 @@ func (s *server) AddDirectoriesToWatchList(ctx context.Context, in *pb.PathList)
 func init() {
 	srv = grpc.NewServer()
 	pb.RegisterWatchListServiceServer(srv, &server{})
+	pb.RegisterAuthenticationServiceServer(srv, &server{})
 }
 
 func main() {
 	fmt.Println("Starting watchlist daemon...")
 	go daemon()
-	<-Channel
+	<-daemonChannel
 	fmt.Println("Watchlist daemon up and running.")
 
 	socketPath := "/tmp/dsync.sock"
