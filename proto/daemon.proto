@@ -32,12 +32,28 @@ message Node {
   FILE_STATUS file_status = 4;
   FILE_STATUS upload_status = 5;
   string absolute_path = 6;
+  string drive_id = 7;
 }
 
 message WatchList {
   int32 id = 1;
   string name = 2;
   string absolute_path = 3;
+  string drive_id = 4;
+}
+
+message OAuth2Token {
+  int32 id = 1;
+  string root = 2;
+  string host = 3;
+  string value = 4;
+}
+
+message DriveRecord {
+  string id = 1;
+  string name = 2;
+  string drive_id = 3;
+  string parent_id = 4;
 }
 
 message PathList {
@@ -56,11 +72,6 @@ message AddDirectoryResponse {
 }
 message ResponseList {
   repeated AddDirectoryResponse values = 1;
-}
-
-message OAuth2Token {
-  int32 id =1;
-  string value = 2;
 }
 
 message Empty {}
