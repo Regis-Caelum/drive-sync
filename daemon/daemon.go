@@ -1,19 +1,12 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/Regis-Caelum/drive-sync/daemon/common"
 	"github.com/Regis-Caelum/drive-sync/daemon/database"
 	pb "github.com/Regis-Caelum/drive-sync/proto/generated"
 	"github.com/fsnotify/fsnotify"
-	"golang.org/x/net/context"
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/google"
-	"google.golang.org/api/drive/v3"
-	"google.golang.org/api/option"
 	"log"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -98,18 +91,20 @@ func init() {
 	daemonChannel = make(chan bool)
 
 	tx, err := database.GetTx()
+	log.Println("Transaction started")
 	if err != nil {
 		fmt.Println("Error:", err)
 		return
 	}
-
 	tx.First(token)
+	database.CommitTx(tx)
+	log.Println("Transaction Ended")
+
 	if token.GetValue() != "" {
 		syncWithDrive()
 	} else {
 		fmt.Println("cannot sync files, no drive connected")
 	}
-	database.CommitTx(tx)
 
 	go fileUpdateDaemon()
 
@@ -132,6 +127,7 @@ func init() {
 
 func (n NodesMap) addNodesMap() {
 	tx, err := database.GetTx()
+	log.Println("Transaction started")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -144,10 +140,12 @@ func (n NodesMap) addNodesMap() {
 		}
 	}
 	database.CommitTx(tx)
+	log.Println("Transaction Ended")
 }
 
 func (n NodesMap) deleteNodesMap() {
 	tx, err := database.GetTx()
+	log.Println("Transaction started")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -158,10 +156,12 @@ func (n NodesMap) deleteNodesMap() {
 	}
 	tx.Where("absolute_path NOT IN (?)", absolutePaths).Delete(&pb.Node{})
 	database.CommitTx(tx)
+	log.Println("Transaction Ended")
 }
 
 func (w WatchListMap) addWatchListMap() {
 	tx, err := database.GetTx()
+	log.Println("Transaction started")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -181,11 +181,13 @@ func (w WatchListMap) addWatchListMap() {
 		}
 	}
 	database.CommitTx(tx)
+	log.Println("Transaction Ended")
 
 }
 
 func (w WatchListMap) deleteWatchListMap() {
 	tx, err := database.GetTx()
+	log.Println("Transaction started")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -197,6 +199,7 @@ func (w WatchListMap) deleteWatchListMap() {
 	}
 	tx.Where("absolute_path NOT IN (?)", absolutePaths).Delete(&pb.WatchList{})
 	database.CommitTx(tx)
+	log.Println("Transaction Ended")
 }
 
 func traverseDirHelper(dirPath string) error {
@@ -322,71 +325,6 @@ func handleRename(oldPath string) {
 		sharedResources.mutex.Unlock()
 		fileMasterChannel <- pb.FILE_ACTIONS_DELETE_NODES
 	}
-}
-
-func syncWithDrive() {
-	ctx := context.Background()
-
-	b, err := os.ReadFile("credentials.json")
-	if err != nil {
-		log.Fatalf("Unable to read client secret file: %v", err)
-	}
-
-	config, err := google.ConfigFromJSON(b, drive.DriveScope)
-	if err != nil {
-		log.Fatalf("Unable to parse client secret file to config: %v", err)
-	}
-
-	driveClient, err := getGDriveClient(config)
-	if err != nil {
-		fmt.Printf("Unable to get google drive client: %v", err)
-		return
-	}
-
-	driveService, err := drive.NewService(ctx, option.WithHTTPClient(driveClient))
-	if err != nil {
-		log.Fatalf("Unable to retrieve Drive client: %v", err)
-	}
-
-	r, err := driveService.Files.List().PageSize(10).
-		Fields("nextPageToken, files(id, name)").Do()
-	if err != nil {
-		log.Fatalf("Unable to retrieve files: %v", err)
-	}
-	fmt.Println("Files:")
-	if len(r.Files) == 0 {
-		fmt.Println("No files found.")
-	} else {
-		for _, i := range r.Files {
-			fmt.Printf("%s (%s)\n", i.Name, i.Id)
-		}
-	}
-}
-
-func getGDriveClient(config *oauth2.Config) (*http.Client, error) {
-	tok := &oauth2.Token{}
-	err := json.Unmarshal([]byte(token.GetValue()), tok)
-	if err != nil {
-		fmt.Println("Error:", err)
-		return nil, err
-	}
-
-	return config.Client(context.Background(), tok), nil
-}
-
-func gDriveDaemon() {
-	tx, err := database.GetTx()
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
-	}
-	tx.First(token)
-	if token.GetValue() == "" {
-		fmt.Println("cannot sync files, no drive connected")
-	} else {
-
-	}
-	database.CommitTx(tx)
 }
 
 func handleEventDaemon(event fsnotify.Event) {
