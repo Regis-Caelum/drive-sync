@@ -4,20 +4,25 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/Regis-Caelum/drive-sync/daemon/database"
+	pb "github.com/Regis-Caelum/drive-sync/proto/generated"
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
+	"io"
 	"log"
+	"mime"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 )
 
 var gDriveClient *http.Client
 var gDriveService *drive.Service
 
-func syncWithDrive() {
+func gDriveSync() {
 	ctx := context.Background()
 
 	b, err := os.ReadFile("credentials.json")
@@ -30,7 +35,7 @@ func syncWithDrive() {
 		log.Fatalf("Unable to parse client secret file to config: %v", err)
 	}
 
-	gDriveClient, err = getGDriveClient(config)
+	gDriveClient, err = gDriveGetClient(config)
 	if err != nil {
 		fmt.Printf("Unable to get google drive client: %v", err)
 		return
@@ -42,7 +47,7 @@ func syncWithDrive() {
 	}
 
 	if token.GetRoot() == "" {
-		createdRootFolder, err := gDriveCreateFolder("Computers", nil, "")
+		createdRootFolder, err := gDriveCreateFolder("Computers", []string{}, "")
 		if err != nil {
 			log.Fatalf("Unable to create root folder: %v", err)
 		}
@@ -87,26 +92,134 @@ func syncWithDrive() {
 		database.RollbackTx(tx)
 	}
 
-	r, err := gDriveGetChildren(token.GetHost())
-	if err != nil {
-		log.Fatalf("Unable to retrieve files: %v", err)
-	}
-	fmt.Println("Files:")
-	if len(r.Files) == 0 {
-		watchList, _ := database.ListAllWatchLists()
-		if len(watchList) != 0 {
-			//for _, w := range watchList {
-			//	//_, err = gDriveCreateFolder(w.Name)
-			//}
-		}
-	} else {
-		for _, i := range r.Files {
-			fmt.Printf("%s (%s)\n", i.Name, i.Id)
+	gDriveSyncFolders()
+	gDriveSyncFiles()
+
+}
+
+func gDriveSyncFolders() {
+	fmt.Println("Syncing Folders:")
+	watchList, _ := database.ListAllWatchLists()
+	if len(watchList) != 0 {
+		for _, w := range watchList {
+			_, err := database.GetDriveRecordByLocalPath(w.GetAbsolutePath())
+			if err != nil {
+				descPath := ""
+				pathParts := strings.Split(w.GetAbsolutePath(), "/")
+				currentParentID := token.GetHost()
+				for _, part := range pathParts {
+					if part == "" {
+						continue
+					}
+					descPath += "/" + part
+					sharedResources.mutex.Lock()
+					if rec, err := database.GetDriveRecordByLocalPath(descPath); err == nil {
+						sharedResources.mutex.Unlock()
+						currentParentID = rec.DriveId
+						continue
+					}
+					folderID, err := gDriveCreateFolder(part, []string{currentParentID}, descPath)
+					if err != nil {
+						fmt.Printf("Unable to create folder: %v", err)
+						continue
+					}
+					log.Printf("Host folder created: %s (%s)\n", folderID.Name, folderID.Id)
+					err = database.CreateDriveRecord(&pb.DriveRecord{
+						Name:      part,
+						LocalPath: descPath,
+						DriveId:   folderID.Id,
+						ParentId:  currentParentID,
+					})
+					sharedResources.mutex.Unlock()
+					if err != nil {
+						fmt.Printf("Unable to update watch list: %v", err)
+					}
+					currentParentID = folderID.Id
+				}
+				w.DriveId = currentParentID
+				err = database.UpdateWatchList(w)
+				if err != nil {
+					fmt.Printf("Unable to update watch list: %v", err)
+				}
+			}
 		}
 	}
 }
 
-func getGDriveClient(config *oauth2.Config) (*http.Client, error) {
+func gDriveSyncFiles() {
+	fmt.Println("Syncing Files:")
+	fileNodes, _ := database.ListAllNodes()
+	if len(fileNodes) != 0 {
+		for _, f := range fileNodes {
+			if f.GetUploadStatus() == pb.FILE_STATUS_NOT_UPLOADED || f.GetFileStatus() == pb.FILE_STATUS_MODIFIED {
+				descPath := ""
+				pathParts := strings.Split(f.GetAbsolutePath(), "/")
+				currentParentID := token.GetHost()
+				for i, part := range pathParts {
+					if part == "" {
+						continue
+					}
+					descPath += "/" + part
+					sharedResources.mutex.Lock()
+					if rec, err := database.GetDriveRecordByLocalPath(descPath); err == nil {
+						currentParentID = rec.DriveId
+						sharedResources.mutex.Unlock()
+						continue
+					}
+					if i == len(pathParts)-1 {
+						localFile, err := os.Open(f.GetAbsolutePath())
+						if err != nil {
+							log.Fatalf("Unable to open local file: %v", err)
+						}
+						fileID, err := gDriveCreateFile(part, []string{currentParentID}, descPath, localFile)
+						_ = localFile.Close()
+						if err != nil {
+							fmt.Printf("Unable to create file: %v", err)
+							continue
+						}
+						f.DriveId = fileID.Id
+						f.FileStatus = pb.FILE_STATUS_UNMODIFIED
+						f.UploadStatus = pb.FILE_STATUS_UPLOADED
+						err = database.UpdateNode(f)
+						if err != nil {
+							fmt.Printf("Unable to update watch list: %v", err)
+						}
+						err = database.CreateDriveRecord(&pb.DriveRecord{
+							Name:      part,
+							LocalPath: descPath,
+							DriveId:   fileID.Id,
+							ParentId:  currentParentID,
+						})
+						sharedResources.mutex.Unlock()
+						if err != nil {
+							fmt.Printf("Unable to update watch list: %v", err)
+						}
+						continue
+					}
+					folderID, err := gDriveCreateFolder(part, []string{currentParentID}, descPath)
+					if err != nil {
+						fmt.Printf("Unable to create folder: %v", err)
+						continue
+					}
+					log.Printf("Host folder created: %s (%s)\n", folderID.Name, folderID.Id)
+					err = database.CreateDriveRecord(&pb.DriveRecord{
+						Name:      part,
+						LocalPath: descPath,
+						DriveId:   folderID.Id,
+						ParentId:  currentParentID,
+					})
+					sharedResources.mutex.Unlock()
+					if err != nil {
+						fmt.Printf("Unable to update watch list: %v", err)
+					}
+					currentParentID = folderID.Id
+				}
+			}
+		}
+	}
+}
+
+func gDriveGetClient(config *oauth2.Config) (*http.Client, error) {
 	tok := &oauth2.Token{}
 	err := json.Unmarshal([]byte(token.GetValue()), tok)
 	if err != nil {
@@ -118,18 +231,74 @@ func getGDriveClient(config *oauth2.Config) (*http.Client, error) {
 }
 
 func gDriveCreateFolder(name string, parents []string, localPath string) (*drive.File, error) {
+	var query string
+
+	if len(parents) > 0 {
+		query = fmt.Sprintf("name = '%s' and '%s' in parents and trashed = false and mimeType = 'application/vnd.google-apps.folder'", name, parents[0])
+	} else {
+		query = fmt.Sprintf("name = '%s' and 'root' in parents and trashed = false and mimeType = 'application/vnd.google-apps.folder'", name)
+	}
+	r, err := gDriveService.Files.List().Q(query).Fields("files(id, name)").Do()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(r.Files) > 0 {
+		return r.Files[0], nil
+	}
+
 	folder := &drive.File{
 		Name:        name,
 		MimeType:    "application/vnd.google-apps.folder",
 		Parents:     parents,
 		Description: localPath,
 	}
-	folder, err := gDriveService.Files.Create(folder).Do()
+
+	folder, err = gDriveService.Files.Create(folder).Do()
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("Host folder created: %s (%s)\n", folder.Name, folder.Id)
 	return folder, nil
+}
+
+func gDriveCreateFile(name string, parents []string, localPath string, fileContent io.Reader) (*drive.File, error) {
+	var query string
+
+	ext := filepath.Ext(name)
+	mimeType := mime.TypeByExtension(ext)
+	if mimeType == "" {
+		mimeType = "application/octet-stream" // Default to a generic binary stream
+	}
+
+	if len(parents) > 0 {
+		query = fmt.Sprintf("name = '%s' and '%s' in parents and trashed = false and mimeType = '%s'", name, parents[0], mimeType)
+	} else {
+		query = fmt.Sprintf("name = '%s' and 'root' in parents and trashed = false and mimeType = '%s'", name, mimeType)
+	}
+
+	r, err := gDriveService.Files.List().Q(query).Fields("files(id, name)").Do()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(r.Files) > 0 {
+		return r.Files[0], nil
+	}
+
+	file := &drive.File{
+		Name:        name,
+		MimeType:    mimeType,
+		Parents:     parents,
+		Description: localPath,
+	}
+
+	file, err = gDriveService.Files.Create(file).Media(fileContent).Do()
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Printf("File created: %s (%s)\n", file.Name, file.Id)
+	return file, nil
 }
 
 func gDriveGetChildren(parent string) (*drive.FileList, error) {
