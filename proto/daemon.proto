@@ -50,10 +50,11 @@ message OAuth2Token {
 }
 
 message DriveRecord {
-  string id = 1;
+  int32 id = 1;
   string name = 2;
-  string drive_id = 3;
-  string parent_id = 4;
+  string local_path = 3 ;
+  string drive_id = 4;
+  string parent_id = 5;
 }
 
 message PathList {
