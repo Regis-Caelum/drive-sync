@@ -101,7 +101,7 @@ func init() {
 	log.Println("Transaction Ended")
 
 	if token.GetValue() != "" {
-		syncWithDrive()
+		gDriveSync()
 	} else {
 		fmt.Println("cannot sync files, no drive connected")
 	}
@@ -126,21 +126,14 @@ func init() {
 }
 
 func (n NodesMap) addNodesMap() {
-	tx, err := database.GetTx()
-	log.Println("Transaction started")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer database.RollbackTx(tx)
-
 	for _, node := range n {
-		result := tx.Create(node)
-		if result.Error != nil {
-			log.Println(result.Error)
+		err := database.CreateNode(node)
+		if err != nil {
+			log.Println(err)
 		}
 	}
-	database.CommitTx(tx)
-	log.Println("Transaction Ended")
+	fmt.Println("Uploading files to drive")
+	gDriveSyncFiles()
 }
 
 func (n NodesMap) deleteNodesMap() {
@@ -160,29 +153,21 @@ func (n NodesMap) deleteNodesMap() {
 }
 
 func (w WatchListMap) addWatchListMap() {
-	tx, err := database.GetTx()
-	log.Println("Transaction started")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer database.RollbackTx(tx)
-
 	for _, watchList := range w {
-		err = watcher.Add(watchList.AbsolutePath)
+		err := watcher.Add(watchList.AbsolutePath)
 		if err != nil {
 			log.Println("Error: ", err, watchList.AbsolutePath)
 		}
 	}
 
 	for _, watchList := range w {
-		result := tx.Create(watchList)
-		if result.Error != nil {
-			log.Println(result.Error)
+		err := database.CreateWatchList(watchList)
+		if err != nil {
+			log.Println(err)
 		}
 	}
-	database.CommitTx(tx)
-	log.Println("Transaction Ended")
-
+	fmt.Println("Creating folders in drive")
+	gDriveSyncFolders()
 }
 
 func (w WatchListMap) deleteWatchListMap() {
