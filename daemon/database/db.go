@@ -96,15 +96,26 @@ func RollbackTx(tx *gorm.DB) {
 // CreateNode creates a new Node record in a transaction.
 func CreateNode(node *pb.Node) error {
 	return DB.Transaction(func(tx *gorm.DB) error {
+		var existingNode pb.Node
+
+		if err := tx.Where("absolute_path = ?", existingNode.GetAbsolutePath()).First(&existingNode).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+
+		if existingNode.GetId() != 0 {
+			fmt.Println("Record already exists with absolute_path:", node.GetAbsolutePath())
+			return fmt.Errorf("record already exists")
+		}
+
 		return tx.Create(node).Error
 	})
 }
 
-// GetNode retrieves a Node record by ID in a transaction.
-func GetNode(id int32) (*pb.Node, error) {
+// GetNodeByAbsolutePath retrieves a Node record by ID in a transaction.
+func GetNodeByAbsolutePath(absolutePath string) (*pb.Node, error) {
 	var node *pb.Node
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		return tx.First(&node, id).Error
+		return tx.Where("absolute_path = ?", absolutePath).First(&node).Error
 	})
 	return node, err
 }
@@ -133,6 +144,17 @@ func DeleteNode(id int32) error {
 	})
 }
 
+// DeleteNodeWithPrefix deletes a Node record by prefix in a transaction.
+func DeleteNodeWithPrefix(columnName, prefix string) error {
+	pattern := prefix + "%"
+
+	err := DB.Where(fmt.Sprintf("%s LIKE ?", columnName), pattern).Delete(&pb.Node{}).Error
+	if err != nil {
+		return fmt.Errorf("failed to delete records with prefix %s: %w", prefix, err)
+	}
+	return nil
+}
+
 // ListAllNodes retrieves all Node records in a transaction.
 func ListAllNodes() ([]*pb.Node, error) {
 	var nodes []*pb.Node
@@ -147,17 +169,28 @@ func ListAllNodes() ([]*pb.Node, error) {
 // CreateWatchList creates a new WatchList record in a transaction.
 func CreateWatchList(watchList *pb.WatchList) error {
 	return DB.Transaction(func(tx *gorm.DB) error {
+		var existingWatchList pb.WatchList
+
+		if err := tx.Where("absolute_path = ?", watchList.GetAbsolutePath()).First(&existingWatchList).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+
+		if existingWatchList.GetId() != 0 {
+			fmt.Println("Record already exists with absolute_path:", watchList.GetAbsolutePath())
+			return gorm.ErrDuplicatedKey
+		}
+
 		return tx.Create(watchList).Error
 	})
 }
 
 // GetWatchList retrieves a WatchList record by ID in a transaction.
-func GetWatchList(id int32) (*pb.WatchList, error) {
-	var watchList *pb.WatchList
+func GetWatchList(absolutePath string) (*pb.WatchList, error) {
+	var watchList pb.WatchList
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		return tx.First(&watchList, id).Error
+		return tx.Where("absolute_path = ?", absolutePath).First(&watchList).Error
 	})
-	return watchList, err
+	return &watchList, err
 }
 
 // UpdateWatchList updates an existing WatchList record in a transaction.
@@ -182,6 +215,17 @@ func DeleteWatchList(id int32) error {
 	return DB.Transaction(func(tx *gorm.DB) error {
 		return tx.Delete(&pb.WatchList{}, id).Error
 	})
+}
+
+// DeleteWatchListWithPrefix deletes a WatchList record by prefix in a transaction.
+func DeleteWatchListWithPrefix(columnName, prefix string) error {
+	pattern := prefix + "%"
+
+	err := DB.Where(fmt.Sprintf("%s LIKE ?", columnName), pattern).Delete(&pb.WatchList{}).Error
+	if err != nil {
+		return fmt.Errorf("failed to delete records with prefix %s: %w", prefix, err)
+	}
+	return nil
 }
 
 // ListAllWatchLists retrieves all WatchList records in a transaction.
@@ -245,7 +289,7 @@ func CreateDriveRecord(record *pb.DriveRecord) error {
 			return err
 		}
 
-		if existingRecord.Id != 0 {
+		if existingRecord.GetId() != 0 {
 			fmt.Println("Record already exists with local_path:", record.LocalPath)
 			return fmt.Errorf("record already exists")
 		}
@@ -284,4 +328,61 @@ func ListAllDriveRecord() ([]*pb.DriveRecord, error) {
 		return tx.Find(&records).Error
 	})
 	return records, err
+}
+
+// DeleteDriveRecordsWithPrefix deletes a DriveRecordList record by prefix in a transaction.
+func DeleteDriveRecordsWithPrefix(columnName, prefix string) error {
+	pattern := prefix + "%"
+
+	err := DB.Where(fmt.Sprintf("%s LIKE ?", columnName), pattern).Delete(&pb.DriveRecord{}).Error
+	if err != nil {
+		return fmt.Errorf("failed to delete records with prefix %s: %w", prefix, err)
+	}
+	return nil
+}
+
+// GetNodesWithPrefix get all the records with prefix
+func GetNodesWithPrefix(columnName, prefix string) ([]*pb.Node, error) {
+	var result []*pb.Node
+	var err error
+
+	// Construct the pattern for the prefix
+	pattern := prefix + "%"
+
+	// Perform the query to find records with the specific prefix
+	err = DB.Where(fmt.Sprintf("%s LIKE ?", columnName), pattern).Find(&result).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve records with prefix %s: %w", prefix, err)
+	}
+	return result, nil
+}
+
+// GetWatchListWithPrefix get all the records with prefix
+func GetWatchListWithPrefix(columnName, prefix string) ([]*pb.WatchList, error) {
+	var result []*pb.WatchList
+	var err error
+	// Construct the pattern for the prefix
+	pattern := prefix + "%"
+
+	// Perform the query to find records with the specific prefix
+	err = DB.Where(fmt.Sprintf("%s LIKE ?", columnName), pattern).Find(&result).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve records with prefix %s: %w", prefix, err)
+	}
+	return result, nil
+}
+
+// GetDriveRecordsWithPrefix get all the records with prefix
+func GetDriveRecordsWithPrefix(columnName, prefix string) ([]*pb.DriveRecord, error) {
+	var result []*pb.DriveRecord
+	var err error
+	// Construct the pattern for the prefix
+	pattern := prefix + "%"
+
+	// Perform the query to find records with the specific prefix
+	err = DB.Where(fmt.Sprintf("%s LIKE ?", columnName), pattern).Find(&result).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve records with prefix %s: %w", prefix, err)
+	}
+	return result, nil
 }
