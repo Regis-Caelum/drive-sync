@@ -6,6 +6,7 @@ import (
 	"github.com/Regis-Caelum/drive-sync/daemon/database"
 	pb "github.com/Regis-Caelum/drive-sync/proto/generated"
 	"github.com/fsnotify/fsnotify"
+	"gorm.io/gorm"
 	"log"
 	"os"
 	"path/filepath"
@@ -137,19 +138,24 @@ func (n NodesMap) addNodesMap() {
 }
 
 func (n NodesMap) deleteNodesMap() {
-	tx, err := database.GetTx()
-	log.Println("Transaction started")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer database.RollbackTx(tx)
 	absolutePaths := make([]string, 0, len(n))
 	for _, node := range n {
 		absolutePaths = append(absolutePaths, node.AbsolutePath)
 	}
-	tx.Where("absolute_path NOT IN (?)", absolutePaths).Delete(&pb.Node{})
-	database.CommitTx(tx)
-	log.Println("Transaction Ended")
+	err := database.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("absolute_path NOT IN (?)", absolutePaths).Delete(&pb.Node{}).Error; err != nil {
+			return fmt.Errorf("failed to delete WatchList records: %w", err)
+		}
+
+		if err := tx.Where("absolute_path NOT IN (?)", absolutePaths).Delete(&pb.DriveRecord{}).Error; err != nil {
+			return fmt.Errorf("failed to delete DriveRecord records: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		log.Println("Error:", err)
+	}
+	gDriveDeleteFiles()
 }
 
 func (w WatchListMap) addWatchListMap() {
@@ -171,20 +177,25 @@ func (w WatchListMap) addWatchListMap() {
 }
 
 func (w WatchListMap) deleteWatchListMap() {
-	tx, err := database.GetTx()
-	log.Println("Transaction started")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer database.RollbackTx(tx)
-
 	absolutePaths := make([]string, 0, len(w))
 	for _, node := range w {
 		absolutePaths = append(absolutePaths, node.AbsolutePath)
 	}
-	tx.Where("absolute_path NOT IN (?)", absolutePaths).Delete(&pb.WatchList{})
-	database.CommitTx(tx)
-	log.Println("Transaction Ended")
+	err := database.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("absolute_path NOT IN (?)", absolutePaths).Delete(&pb.WatchList{}).Error; err != nil {
+			return fmt.Errorf("failed to delete WatchList records: %w", err)
+		}
+
+		if err := tx.Where("absolute_path NOT IN (?)", absolutePaths).Delete(&pb.DriveRecord{}).Error; err != nil {
+			return fmt.Errorf("failed to delete DriveRecord records: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		log.Println("Error:", err)
+	}
+
+	gDriveDeleteFolders()
 }
 
 func traverseDirHelper(dirPath string) error {
