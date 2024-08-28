@@ -219,6 +219,46 @@ func gDriveSyncFiles() {
 	}
 }
 
+func gDriveDeleteFolders() {
+	fmt.Println("Deleting Folders:")
+
+	allFolders, err := gDriveGetAllFolders()
+	if err != nil {
+		log.Fatalf("Failed to retrieve all folders: %v", err)
+	}
+
+	for _, folderID := range allFolders {
+		if _, exists := sharedResources.watchListMap[folderID.Id]; !exists {
+			err := gDriveService.Files.Delete(folderID.Id).Context(context.Background()).Do()
+			if err != nil {
+				log.Printf("Failed to delete folder with ID %s: %v", folderID.Id, err)
+			} else {
+				fmt.Printf("Successfully deleted folder with ID %s\n", folderID.Id)
+			}
+		}
+	}
+}
+
+func gDriveDeleteFiles() {
+	fmt.Println("Deleting Files:")
+
+	allFiles, err := gDriveGetAllFiles()
+	if err != nil {
+		log.Fatalf("Failed to retrieve all files: %v", err)
+	}
+
+	for _, fileId := range allFiles {
+		if _, exists := sharedResources.nodesMap[fileId.Id]; !exists {
+			err = gDriveService.Files.Delete(fileId.Id).Context(context.Background()).Do()
+			if err != nil {
+				log.Printf("Failed to delete folder with ID %s: %v", fileId.Id, err)
+			} else {
+				fmt.Printf("Successfully deleted folder with ID %s\n", fileId.Id)
+			}
+		}
+	}
+}
+
 func gDriveGetClient(config *oauth2.Config) (*http.Client, error) {
 	tok := &oauth2.Token{}
 	err := json.Unmarshal([]byte(token.GetValue()), tok)
@@ -301,9 +341,28 @@ func gDriveCreateFile(name string, parents []string, localPath string, fileConte
 	return file, nil
 }
 
-func gDriveGetChildren(parent string) (*drive.FileList, error) {
-	query := fmt.Sprintf("'%s' in parents and trashed = false", parent)
-	r, err := gDriveService.Files.List().Q(query).
-		Fields("nextPageToken, files(id, name)").Do()
-	return r, err
+func gDriveGetAllFolders() ([]*drive.File, error) {
+	query := fmt.Sprintf("mimeType = 'application/vnd.google-apps.folder' and '%s' in parents and trashed = false", token.GetHost())
+	files, err := gDriveService.Files.List().
+		Q(query).
+		Fields("files(id, name)").
+		Do()
+	if err != nil {
+		return nil, fmt.Errorf("unable to retrieve folders: %v", err)
+	}
+
+	return files.Files, nil
+}
+
+func gDriveGetAllFiles() ([]*drive.File, error) {
+	query := fmt.Sprintf("'%s' in parents and trashed = false", token.GetHost())
+	files, err := gDriveService.Files.List().
+		Q(query).
+		Fields("files(id, name)").
+		Do()
+	if err != nil {
+		return nil, fmt.Errorf("unable to retrieve folders: %v", err)
+	}
+
+	return files.Files, nil
 }
