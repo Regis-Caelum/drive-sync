@@ -20,15 +20,17 @@ type server struct {
 
 func (s *server) SaveToken(ctx context.Context, in *pb.OAuth2Token) (*pb.Empty, error) {
 	tx, err := database.GetTx()
+	log.Println("Transaction started")
 	if err != nil {
 		fmt.Println("Error:", err)
 		return nil, fmt.Errorf("unabe to connect to database")
 	}
-	defer tx.Rollback()
+	defer database.RollbackTx(tx)
 
 	in.Id = 1
 	tx.Save(in)
 	database.CommitTx(tx)
+	log.Println("Transaction Ended")
 	return &pb.Empty{}, nil
 }
 
@@ -42,9 +44,11 @@ func (s *server) GetWatchList(ctx context.Context, in *pb.Empty) (*pb.FileList, 
 	var resp = &pb.FileList{}
 
 	tx, err := database.GetTx()
+	log.Println("Transaction started")
 	if err != nil {
 		fmt.Println("Error:", err)
 	}
+	defer database.RollbackTx(tx)
 
 	tx.Find(&watchList)
 	tx.Find(&nodeList)
@@ -57,34 +61,25 @@ func (s *server) GetWatchList(ctx context.Context, in *pb.Empty) (*pb.FileList, 
 func (s *server) AddDirectoriesToWatchList(ctx context.Context, in *pb.PathList) (*pb.ResponseList, error) {
 	resp := new(pb.ResponseList)
 	for _, path := range in.GetValues() {
-		if info, err := os.Stat(path); !os.IsNotExist(err) {
-			fmt.Printf("Adding path %s to watchlist...", path)
-			sharedResources.mutex.Lock()
-			sharedResources.watchListMap[path] = &pb.WatchList{
-				Name:         info.Name(),
-				AbsolutePath: path,
-			}
-			sharedResources.mutex.Unlock()
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			err = traverseDirHelper(path)
 			if err != nil {
-				fmt.Println("	✔❌")
+				fmt.Printf("Adding path %s to watchlist...	✔❌\n", path)
 				resp.Values = append(resp.Values, &pb.AddDirectoryResponse{
 					Status: pb.ADD_DIRECTORY_STATUS_PARTIAL,
 					Error:  err.Error(),
 					Path:   path,
 				})
-			} else {
-				resp.Values = append(resp.Values, &pb.AddDirectoryResponse{
-					Status: pb.ADD_DIRECTORY_STATUS_COMPLETE,
-					Error:  "nil",
-					Path:   path,
-				})
+				continue
 			}
-			fmt.Println("	✔")
-			fileMasterChannel <- pb.FILE_ACTIONS_ADD_NODES
-			fileMasterChannel <- pb.FILE_ACTIONS_ADD_WATCHLIST
+			resp.Values = append(resp.Values, &pb.AddDirectoryResponse{
+				Status: pb.ADD_DIRECTORY_STATUS_COMPLETE,
+				Error:  "nil",
+				Path:   path,
+			})
+			fmt.Printf("Adding path %s to watchlist...	✔\n", path)
 		} else {
-			fmt.Println("	❌")
+			fmt.Printf("Adding path %s to watchlist...	❌\n", path)
 			resp.Values = append(resp.Values, &pb.AddDirectoryResponse{
 				Status: pb.ADD_DIRECTORY_STATUS_FAILED,
 				Error:  err.Error(),
