@@ -104,46 +104,48 @@ func gDriveSyncFolders() {
 		for _, w := range watchList {
 			_, err := database.GetDriveRecordByLocalPath(w.GetAbsolutePath())
 			if err != nil {
-				descPath := ""
-				pathParts := strings.Split(w.GetAbsolutePath(), "/")
-				currentParentID := token.GetHost()
-				for _, part := range pathParts {
-					if part == "" {
-						continue
-					}
-					descPath += "/" + part
-					sharedResources.mutex.Lock()
-					if rec, err := database.GetDriveRecordByLocalPath(descPath); err == nil {
-						sharedResources.mutex.Unlock()
-						currentParentID = rec.DriveId
-						continue
-					}
-					folderID, err := gDriveCreateFolder(part, []string{currentParentID}, descPath)
-					if err != nil {
-						fmt.Printf("Unable to create folder: %v", err)
-						continue
-					}
-					log.Printf("Host folder created: %s (%s)\n", folderID.Name, folderID.Id)
-					err = database.CreateDriveRecord(&pb.DriveRecord{
-						Name:      part,
-						LocalPath: descPath,
-						DriveId:   folderID.Id,
-						ParentId:  currentParentID,
-					})
-					sharedResources.mutex.Unlock()
-					if err != nil {
-						fmt.Printf("Unable to update watch list: %v", err)
-					}
-					currentParentID = folderID.Id
-				}
-				w.DriveId = currentParentID
-				err = database.UpdateWatchList(w)
-				if err != nil {
-					fmt.Printf("Unable to update watch list: %v", err)
-				}
+				gDriveSyncFolder(w)
 			}
 		}
 	}
+}
+
+func gDriveSyncFolder(w *pb.WatchList) {
+	descPath := ""
+	pathParts := strings.Split(w.GetAbsolutePath(), "/")
+	currentParentID := token.GetHost()
+	for _, part := range pathParts {
+		if part == "" {
+			continue
+		}
+		descPath += "/" + part
+		if rec, err := database.GetDriveRecordByLocalPath(descPath); err == nil {
+			currentParentID = rec.DriveId
+			continue
+		}
+		folderID, err := gDriveCreateFolder(part, []string{currentParentID}, descPath)
+		if err != nil {
+			fmt.Printf("Unable to create folder: %v", err)
+			continue
+		}
+		log.Printf("Host folder created: %s (%s)\n", folderID.Name, folderID.Id)
+		err = database.CreateDriveRecord(&pb.DriveRecord{
+			Name:      part,
+			LocalPath: descPath,
+			DriveId:   folderID.Id,
+			ParentId:  currentParentID,
+		})
+		if err != nil {
+			fmt.Printf("Unable to update watch list: %v", err)
+		}
+		currentParentID = folderID.Id
+	}
+	w.DriveId = currentParentID
+	err := database.UpdateWatchList(w)
+	if err != nil {
+		fmt.Printf("Unable to update watch list: %v", err)
+	}
+
 }
 
 func gDriveSyncFiles() {
@@ -152,110 +154,102 @@ func gDriveSyncFiles() {
 	if len(fileNodes) != 0 {
 		for _, f := range fileNodes {
 			if f.GetUploadStatus() == pb.FILE_STATUS_NOT_UPLOADED || f.GetFileStatus() == pb.FILE_STATUS_MODIFIED {
-				descPath := ""
-				pathParts := strings.Split(f.GetAbsolutePath(), "/")
-				currentParentID := token.GetHost()
-				for i, part := range pathParts {
-					if part == "" {
-						continue
-					}
-					descPath += "/" + part
-					sharedResources.mutex.Lock()
-					if rec, err := database.GetDriveRecordByLocalPath(descPath); err == nil {
-						currentParentID = rec.DriveId
-						sharedResources.mutex.Unlock()
-						continue
-					}
-					if i == len(pathParts)-1 {
-						localFile, err := os.Open(f.GetAbsolutePath())
-						if err != nil {
-							log.Fatalf("Unable to open local file: %v", err)
-						}
-						fileID, err := gDriveCreateFile(part, []string{currentParentID}, descPath, localFile)
-						_ = localFile.Close()
-						if err != nil {
-							fmt.Printf("Unable to create file: %v", err)
-							continue
-						}
-						f.DriveId = fileID.Id
-						f.FileStatus = pb.FILE_STATUS_UNMODIFIED
-						f.UploadStatus = pb.FILE_STATUS_UPLOADED
-						err = database.UpdateNode(f)
-						if err != nil {
-							fmt.Printf("Unable to update watch list: %v", err)
-						}
-						err = database.CreateDriveRecord(&pb.DriveRecord{
-							Name:      part,
-							LocalPath: descPath,
-							DriveId:   fileID.Id,
-							ParentId:  currentParentID,
-						})
-						sharedResources.mutex.Unlock()
-						if err != nil {
-							fmt.Printf("Unable to update watch list: %v", err)
-						}
-						continue
-					}
-					folderID, err := gDriveCreateFolder(part, []string{currentParentID}, descPath)
-					if err != nil {
-						fmt.Printf("Unable to create folder: %v", err)
-						continue
-					}
-					log.Printf("Host folder created: %s (%s)\n", folderID.Name, folderID.Id)
-					err = database.CreateDriveRecord(&pb.DriveRecord{
-						Name:      part,
-						LocalPath: descPath,
-						DriveId:   folderID.Id,
-						ParentId:  currentParentID,
-					})
-					sharedResources.mutex.Unlock()
-					if err != nil {
-						fmt.Printf("Unable to update watch list: %v", err)
-					}
-					currentParentID = folderID.Id
-				}
+				gDriveSyncFile(f)
 			}
 		}
 	}
 }
 
-func gDriveDeleteFolders() {
-	fmt.Println("Deleting Folders:")
-
-	allFolders, err := gDriveGetAllFolders()
-	if err != nil {
-		log.Fatalf("Failed to retrieve all folders: %v", err)
-	}
-
-	for _, folderID := range allFolders {
-		if _, exists := sharedResources.watchListMap[folderID.Id]; !exists {
-			err := gDriveService.Files.Delete(folderID.Id).Context(context.Background()).Do()
+func gDriveSyncFile(f *pb.Node) {
+	descPath := ""
+	pathParts := strings.Split(f.GetAbsolutePath(), "/")
+	currentParentID := token.GetHost()
+	for i, part := range pathParts {
+		if part == "" {
+			continue
+		}
+		descPath += "/" + part
+		if rec, err := database.GetDriveRecordByLocalPath(descPath); err == nil {
+			currentParentID = rec.DriveId
+			continue
+		}
+		if i == len(pathParts)-1 {
+			localFile, err := os.Open(f.GetAbsolutePath())
 			if err != nil {
-				log.Printf("Failed to delete folder with ID %s: %v", folderID.Id, err)
-			} else {
-				fmt.Printf("Successfully deleted folder with ID %s\n", folderID.Id)
+				log.Fatalf("Unable to open local file: %v", err)
 			}
+			fileID, err := gDriveCreateFile(part, []string{currentParentID}, descPath, localFile)
+			_ = localFile.Close()
+			if err != nil {
+				fmt.Printf("Unable to create file: %v", err)
+				continue
+			}
+			f.DriveId = fileID.Id
+			f.FileStatus = pb.FILE_STATUS_UNMODIFIED
+			f.UploadStatus = pb.FILE_STATUS_UPLOADED
+			err = database.UpdateNode(f)
+			if err != nil {
+				fmt.Printf("Unable to update watch list: %v", err)
+			}
+			err = database.CreateDriveRecord(&pb.DriveRecord{
+				Name:      part,
+				LocalPath: descPath,
+				DriveId:   fileID.Id,
+				ParentId:  currentParentID,
+			})
+			if err != nil {
+				fmt.Printf("Unable to update watch list: %v", err)
+			}
+			continue
 		}
+		folderID, err := gDriveCreateFolder(part, []string{currentParentID}, descPath)
+		if err != nil {
+			fmt.Printf("Unable to create folder: %v", err)
+			continue
+		}
+		log.Printf("Host folder created: %s (%s)\n", folderID.Name, folderID.Id)
+		err = database.CreateDriveRecord(&pb.DriveRecord{
+			Name:      part,
+			LocalPath: descPath,
+			DriveId:   folderID.Id,
+			ParentId:  currentParentID,
+		})
+		if err != nil {
+			fmt.Printf("Unable to update watch list: %v", err)
+		}
+		currentParentID = folderID.Id
 	}
 }
 
-func gDriveDeleteFiles() {
+func gDriveDeleteFolders(watchList *pb.WatchList) {
+	fmt.Println("Deleting Folders:")
+	err := gDriveService.Files.Delete(watchList.GetDriveId()).Context(context.Background()).Do()
+	if err != nil {
+		log.Printf("Failed to delete folder with ID %s, %s: %v", watchList.GetDriveId(), watchList.GetName(), err)
+	} else {
+		fmt.Printf("Successfully deleted folder with ID %s, %s\n", watchList.GetDriveId(), watchList.GetName())
+	}
+}
+
+func gDriveDeleteFiles(node *pb.Node) {
 	fmt.Println("Deleting Files:")
 
-	allFiles, err := gDriveGetAllFiles()
+	err := gDriveService.Files.Delete(node.GetDriveId()).Context(context.Background()).Do()
 	if err != nil {
-		log.Fatalf("Failed to retrieve all files: %v", err)
+		log.Printf("Failed to delete file with ID %s, %s: %v", node.GetDriveId(), node.GetName(), err)
+	} else {
+		fmt.Printf("Successfully deleted file with ID %s, %s\n", node.GetDriveId(), node.GetName())
 	}
+}
 
-	for _, fileId := range allFiles {
-		if _, exists := sharedResources.nodesMap[fileId.Id]; !exists {
-			err = gDriveService.Files.Delete(fileId.Id).Context(context.Background()).Do()
-			if err != nil {
-				log.Printf("Failed to delete folder with ID %s: %v", fileId.Id, err)
-			} else {
-				fmt.Printf("Successfully deleted folder with ID %s\n", fileId.Id)
-			}
-		}
+func gDriveDeleteFromDriveRecord(driveRecord *pb.DriveRecord) {
+	fmt.Println("Deleting Files:")
+
+	err := gDriveService.Files.Delete(driveRecord.GetDriveId()).Context(context.Background()).Do()
+	if err != nil {
+		log.Printf("Failed to delete file with ID %s, %s: %v", driveRecord.GetDriveId(), driveRecord.GetName(), err)
+	} else {
+		fmt.Printf("Successfully deleted file with ID %s, %s\n", driveRecord.GetDriveId(), driveRecord.GetName())
 	}
 }
 
@@ -355,7 +349,7 @@ func gDriveGetAllFolders() ([]*drive.File, error) {
 }
 
 func gDriveGetAllFiles() ([]*drive.File, error) {
-	query := fmt.Sprintf("'%s' in parents and trashed = false", token.GetHost())
+	query := fmt.Sprintf("'%s' in parents and trashed = false and mimeType != 'application/vnd.google-apps.folder'", token.GetHost())
 	files, err := gDriveService.Files.List().
 		Q(query).
 		Fields("files(id, name)").
