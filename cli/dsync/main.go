@@ -65,7 +65,8 @@ For help with any of those, simply call them with --help.`)
 	//authCmd := &cmdAuth{global: globalCmd}
 	//app.AddCommand(authCmd.command())
 
-	//app.SetArgs([]string{"add", "dir", "/home/regis/Desktop/projects/test"})
-	app.SetArgs([]string{"auth", "login"})
+	app.SetArgs([]string{"add", "dir", "/home/regis/Desktop/projects/test"})
+	//app.SetArgs([]string{"get", "list", "-df"})
+	//app.SetArgs([]string{"auth", "login"})
 	_ = app.Execute()
 }

@@ -1,0 +1,9 @@
+[Unit]
+Description=Dsync Daemon
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/dsync-daemon
+
+[Install]
+WantedBy=multi-user.target
