@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"github.com/Regis-Caelum/drive-sync/daemon/database"
@@ -25,7 +26,10 @@ var gDriveService *drive.Service
 func gDriveSync() {
 	ctx := context.Background()
 
-	b, err := os.ReadFile("credentials.json")
+	hashedData := "eyJpbnN0YWxsZWQiOnsiY2xpZW50X2lkIjoiNjU5OTE0NDgzNTUwLXBuNW1icTliN21ibmI2cDFzaWNzM3FwMzU3azRsY3FiLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwicHJvamVjdF9pZCI6ImRzeW5jLTQzMzMyMSIsImF1dGhfdXJpIjoiaHR0cHM6Ly9hY2NvdW50cy5nb29nbGUuY29tL28vb2F1dGgyL2F1dGgiLCJ0b2tlbl91cmkiOiJodHRwczovL29hdXRoMi5nb29nbGVhcGlzLmNvbS90b2tlbiIsImF1dGhfcHJvdmlkZXJfeDUwOV9jZXJ0X3VybCI6Imh0dHBzOi8vd3d3Lmdvb2dsZWFwaXMuY29tL29hdXRoMi92MS9jZXJ0cyIsImNsaWVudF9zZWNyZXQiOiJHT0NTUFgtR1UzeTI2b3dvOUF5TE01bFVPTFIzbkFESjB2dCIsInJlZGlyZWN0X3VyaXMiOlsiaHR0cDovL2xvY2FsaG9zdCJdfX0="
+
+	// Unhash (decode) the data
+	b, err := base64.URLEncoding.DecodeString(hashedData)
 	if err != nil {
 		log.Fatalf("Unable to read client secret file: %v", err)
 	}
