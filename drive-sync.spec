@@ -1,5 +1,5 @@
 Name:           drive-sync
-Version:        1.0.0
+Version:        1.0
 Release:        1%{?dist}
 Summary:        Drive Sync CLI and Daemon
 
@@ -56,6 +56,9 @@ systemctl daemon-reload
 pkill dsync-daemon
 
 %changelog
+* Sat Aug 31 2024 Inshal Khan <khanmf@rknec.edu> 1.0-1
+- 
+
 * Sat Aug 31 2024 Inshal Khan <khanmf@rknec.edu> 1.0.0-1
 - new package built with tito
 
