@@ -1,5 +1,5 @@
 Name:           drive-sync
-Version:        1.14
+Version:        1.15
 Release:        1%{?dist}
 Summary:        Drive Sync CLI and Daemon
 
@@ -23,10 +23,10 @@ ls -a
 export GO111MODULE=on
 
 # Build CLI
-go build -o %{_builddir}/dsync cli/dsync
+go build -o %{_builddir}/dsync ./cli/dsync
 
 # Build Daemon
-go build -o %{_builddir}/dsync-daemon daemon
+go build -o %{_builddir}/dsync-daemon ./daemon
 
 %install
 echo "Directory tree of the build root:"
@@ -74,6 +74,9 @@ systemctl daemon-reload
 pkill dsync-daemon
 
 %changelog
+* Sat Aug 31 2024 Inshal Khan <khanmf@rknec.edu> 1.15-1
+- 
+
 * Sat Aug 31 2024 Inshal Khan <khanmf@rknec.edu> 1.14-1
 - 
 
