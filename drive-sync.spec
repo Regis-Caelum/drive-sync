@@ -1,5 +1,5 @@
 Name:           drive-sync
-Version:        1.0
+Version:        1.1
 Release:        1%{?dist}
 Summary:        Drive Sync CLI and Daemon
 
@@ -13,6 +13,14 @@ This package installs the Drive Sync CLI and a daemon for background synchroniza
 %prep
 
 %build
+# Build CLI
+cd cli/dsync || exit
+go build -o dsync
+
+# Build Daemon
+cd ../../daemon || exit
+go build -o dsync-daemon
+
 
 %install
 echo "Directory tree of the build root:"
@@ -22,6 +30,10 @@ find %{buildroot} -type d -print
 mkdir -p %{buildroot}/usr/local/bin
 mkdir -p %{buildroot}/etc/systemd/system
 mkdir -p %{buildroot}/var/lib/dsync
+
+# Copy the built binaries to the build root
+install -m 0755 cli/dsync/dsync %{buildroot}/usr/local/bin/dsync
+install -m 0755 daemon/dsync-daemon %{buildroot}/usr/local/bin/dsync-daemon
 
 touch %{buildroot}/var/lib/dsync/database.sqlite
 chmod 0660 %{buildroot}/var/lib/dsync/database.sqlite
@@ -56,6 +68,21 @@ systemctl daemon-reload
 pkill dsync-daemon
 
 %changelog
+* Sat Aug 31 2024 Inshal Khan <khanmf@rknec.edu> 1.1-1
+- 
+
+* Sat Aug 31 2024 Inshal Khan <khanmf@rknec.edu>
+- 
+
+* Sat Aug 31 2024 Inshal Khan <khanmf@rknec.edu>
+- 
+
+* Sat Aug 31 2024 Inshal Khan <khanmf@rknec.edu>
+- 
+
+* Sat Aug 31 2024 Inshal Khan <khanmf@rknec.edu>
+- 
+
 * Sat Aug 31 2024 Inshal Khan <khanmf@rknec.edu> 1.0-1
 - 
 
