@@ -1,5 +1,5 @@
 Name:           drive-sync
-Version:        1.10
+Version:        1.11
 Release:        1%{?dist}
 Summary:        Drive Sync CLI and Daemon
 
@@ -11,8 +11,8 @@ Source0:        %{name}-%{version}.tar.gz
 This package installs the Drive Sync CLI and a daemon for background synchronization with Google Drive.
 
 %prep
-
 %setup -q
+cat go.mod
 
 %build
 # Build CLI
@@ -72,6 +72,9 @@ systemctl daemon-reload
 pkill dsync-daemon
 
 %changelog
+* Sat Aug 31 2024 Inshal Khan <khanmf@rknec.edu> 1.11-1
+- 
+
 * Sat Aug 31 2024 Inshal Khan <khanmf@rknec.edu> 1.10-1
 - 
 
