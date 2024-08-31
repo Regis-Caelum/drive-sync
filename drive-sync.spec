@@ -1,5 +1,5 @@
 Name:           drive-sync
-Version:        1.19
+Version:        1.20
 Release:        1%{?dist}
 Summary:        Drive Sync CLI and Daemon
 
@@ -45,8 +45,8 @@ touch %{buildroot}/var/lib/dsync/database.sqlite
 chmod 0660 %{buildroot}/var/lib/dsync/database.sqlite
 
 # Copy binaries to the build root
-cp -a /app/rpmbuild/BUILDROOT/drive-sync-1.0-1.x86_64/usr/local/bin/* %{buildroot}/usr/local/bin/
-cp /app/rpmbuild/BUILDROOT/drive-sync-1.0-1.x86_64/etc/systemd/system/dsync-daemon.service %{buildroot}/etc/systemd/system/
+#cp -a /app/rpmbuild/BUILDROOT/drive-sync-1.0-1.x86_64/usr/local/bin/* %{buildroot}/usr/local/bin/
+#cp /app/rpmbuild/BUILDROOT/drive-sync-1.0-1.x86_64/etc/systemd/system/dsync-daemon.service %{buildroot}/etc/systemd/system/
 cp /app/rpmbuild/BUILDROOT/drive-sync-1.0-1.x86_64/var/lib/dsync/database.sqlite %{buildroot}/var/lib/dsync/
 
 %files
@@ -74,6 +74,9 @@ systemctl daemon-reload
 pkill dsync-daemon
 
 %changelog
+* Sat Aug 31 2024 Inshal Khan <khanmf@rknec.edu> 1.20-1
+- 
+
 * Sat Aug 31 2024 Inshal Khan <khanmf@rknec.edu> 1.19-1
 - 
 
