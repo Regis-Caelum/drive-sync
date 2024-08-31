@@ -8,6 +8,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"log"
+	"os"
 )
 
 var (
@@ -16,9 +17,18 @@ var (
 
 func init() {
 	var err error
-	DB, err = gorm.Open(sqlite.Open("./daemon/database/database.sqlite"), &gorm.Config{})
+	var dbPath = os.Getenv("DEBUG_MODE")
+
+	if dbPath == "true" {
+		dbPath = "./daemon/database/database.sqlite"
+	} else {
+		dbPath = "/var/lib/dsync/database.sqlite"
+	}
+
+	// Open the database connection
+	DB, err = gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	if err != nil {
-		log.Fatal("failed to connect database:", err)
+		log.Fatal("failed to connect database:", err, dbPath)
 	}
 
 	sqlDB, err := DB.DB()
