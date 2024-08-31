@@ -1,6 +1,6 @@
 module github.com/Regis-Caelum/drive-sync
 
-go 1.23.0
+go 1.23
 
 require (
 	github.com/fsnotify/fsnotify v1.7.0
