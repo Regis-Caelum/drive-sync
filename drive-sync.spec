@@ -1,5 +1,5 @@
 Name:           drive-sync
-Version:        1.24
+Version:        1.25
 Release:        1%{?dist}
 Summary:        Drive Sync CLI and Daemon
 
@@ -23,12 +23,16 @@ ls -a
 export GO111MODULE=on
 
 # Build CLI with build-id
-go build -ldflags="-X main.buildid=%{version} -w -s" -o %{_builddir}/dsync ./cli/dsync
+#go build -ldflags="-X main.buildid=%{version} -w -s" -o %{_builddir}/dsync ./cli/dsync
+go build -buildid=$(uuidgen) -o %{_builddir}/dsync ./cli/dsync
+
 echo "Built CLI binary:"
 ls -l %{_builddir}/dsync
 
 # Build Daemon with build-id
-go build -ldflags="-X main.buildid=%{version} -w -s" -o %{_builddir}/dsync-daemon ./daemon
+#go build -ldflags="-X main.buildid=%{version} -w -s" -o %{_builddir}/dsync-daemon ./daemon
+go build -buildid=$(uuidgen) -o %{_builddir}/dsync-daemon ./daemon
+
 echo "Built Daemon binary:"
 ls -l %{_builddir}/dsync-daemon
 
@@ -78,6 +82,9 @@ systemctl daemon-reload
 pkill dsync-daemon
 
 %changelog
+* Sat Aug 31 2024 Inshal Khan <khanmf@rknec.edu> 1.25-1
+- 
+
 * Sat Aug 31 2024 Inshal Khan <khanmf@rknec.edu> 1.24-1
 - 
 
