@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	pb "github.com/Regis-Caelum/drive-sync/proto/generated"
@@ -10,33 +11,10 @@ import (
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/drive/v3"
 	"log"
-	"os"
 )
-
-type cmdAuth struct {
-	global *cmdGlobal
-}
-
-func (c *cmdAuth) command() *cobra.Command {
-	cmd := new(cobra.Command)
-	cmd.Use = "auth"
-	cmd.Short = "Command to invoke authentication actions for dsync"
-
-	loginCmd := cmdLogin{global: c.global, auth: c}
-	cmd.AddCommand(loginCmd.command())
-
-	cmd.Args = cobra.NoArgs
-	cmd.DisableFlagsInUseLine = true
-	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		_ = cmd.Usage()
-		return nil
-	}
-	return cmd
-}
 
 type cmdLogin struct {
 	global *cmdGlobal
-	auth   *cmdAuth
 }
 
 func (c *cmdLogin) command() *cobra.Command {
@@ -72,11 +50,18 @@ func (c *cmdLogin) run(_ *cobra.Command, args []string) error {
 	}
 
 	fmt.Println("User not logged in.")
-	b, err := os.ReadFile("credentials.json")
+	//b, err := os.ReadFile("credentials.json")
+	//if err != nil {
+	//	log.Fatalf("Unable to read client secret file: %v", err)
+	//}
+
+	hashedData := "eyJpbnN0YWxsZWQiOnsiY2xpZW50X2lkIjoiNjU5OTE0NDgzNTUwLXBuNW1icTliN21ibmI2cDFzaWNzM3FwMzU3azRsY3FiLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwicHJvamVjdF9pZCI6ImRzeW5jLTQzMzMyMSIsImF1dGhfdXJpIjoiaHR0cHM6Ly9hY2NvdW50cy5nb29nbGUuY29tL28vb2F1dGgyL2F1dGgiLCJ0b2tlbl91cmkiOiJodHRwczovL29hdXRoMi5nb29nbGVhcGlzLmNvbS90b2tlbiIsImF1dGhfcHJvdmlkZXJfeDUwOV9jZXJ0X3VybCI6Imh0dHBzOi8vd3d3Lmdvb2dsZWFwaXMuY29tL29hdXRoMi92MS9jZXJ0cyIsImNsaWVudF9zZWNyZXQiOiJHT0NTUFgtR1UzeTI2b3dvOUF5TE01bFVPTFIzbkFESjB2dCIsInJlZGlyZWN0X3VyaXMiOlsiaHR0cDovL2xvY2FsaG9zdCJdfX0="
+
+	// Unhash (decode) the data
+	b, err := base64.URLEncoding.DecodeString(hashedData)
 	if err != nil {
 		log.Fatalf("Unable to read client secret file: %v", err)
 	}
-
 	config, err := google.ConfigFromJSON(b, drive.DriveScope)
 	if err != nil {
 		log.Fatalf("Unable to parse client secret file to config: %v", err)
