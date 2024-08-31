@@ -28,18 +28,18 @@ go version
 # Build CLI
 ls -a
 
-export GO111MODULE=on
+#export GO111MODULE=on
 
 # Build CLI with build-id
 #go build -ldflags="-X main.buildid=%{version} -w -s" -o %{_builddir}/dsync ./cli/dsync
-go build -ldflags="-buildid=$(uuidgen)" -o %{_builddir}/dsync ./cli/dsync
+#go build -ldflags="-buildid=$(uuidgen)" -o %{_builddir}/dsync ./cli/dsync
 
 echo "Built CLI binary:"
 ls -l %{_builddir}/dsync
 
 # Build Daemon with build-id
 #go build -ldflags="-X main.buildid=%{version} -w -s" -o %{_builddir}/dsync-daemon ./daemon
-go build -ldflags="-buildid=$(uuidgen)" -o %{_builddir}/dsync-daemon ./daemon
+#go build -ldflags="-buildid=$(uuidgen)" -o %{_builddir}/dsync-daemon ./daemon
 
 echo "Built Daemon binary:"
 ls -l %{_builddir}/dsync-daemon
@@ -54,8 +54,8 @@ mkdir -p %{buildroot}/etc/systemd/system
 mkdir -p %{buildroot}/var/lib/dsync
 
 # Copy the built binaries to the build root
-install -m 0755 %{_builddir}/dsync %{buildroot}/usr/local/bin/dsync
-install -m 0755 %{_builddir}/dsync-daemon %{buildroot}/usr/local/bin/dsync-daemon
+install -m 0755 ./builds/dsync %{buildroot}/usr/local/bin/dsync
+install -m 0755 ./builds/dsync-daemon %{buildroot}/usr/local/bin/dsync-daemon
 
 touch %{buildroot}/var/lib/dsync/database.sqlite
 chmod 0660 %{buildroot}/var/lib/dsync/database.sqlite
