@@ -43,9 +43,10 @@ func (c *cmdAddDir) command() *cobra.Command {
 	return cmd
 }
 
-func (c *cmdAddDir) run(_ *cobra.Command, args []string) error {
+func (c *cmdAddDir) run(cmd *cobra.Command, args []string) error {
 	if len(args) < 1 {
 		fmt.Println("Insufficient arguments")
+		_ = cmd.Usage()
 		return nil
 	}
 
