@@ -1,7 +1,10 @@
 Name:           drive-sync
-Version:        1.26
+Version:        1.27
 Release:        1%{?dist}
 Summary:        Drive Sync CLI and Daemon
+
+%define __debug_install_post %{nil}
+%global debug_package %{nil}
 
 License:        MIT
 URL:            https://github.com/Regis-Caelum/drive-sync
@@ -82,6 +85,9 @@ systemctl daemon-reload
 pkill dsync-daemon
 
 %changelog
+* Sat Aug 31 2024 Inshal Khan <khanmf@rknec.edu> 1.27-1
+- 
+
 * Sat Aug 31 2024 Inshal Khan <khanmf@rknec.edu> 1.26-1
 - 
 
