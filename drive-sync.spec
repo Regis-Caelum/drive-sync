@@ -1,5 +1,5 @@
 Name:           drive-sync
-Version:        1.4
+Version:        1.5
 Release:        1%{?dist}
 Summary:        Drive Sync CLI and Daemon
 
@@ -15,6 +15,9 @@ This package installs the Drive Sync CLI and a daemon for background synchroniza
 %build
 # Build CLI
 ls -a
+
+export GOPATH=$(pwd)
+
 # Build CLI
 go build -o %{_builddir}/dsync cli/dsync
 
@@ -67,6 +70,9 @@ systemctl daemon-reload
 pkill dsync-daemon
 
 %changelog
+* Sat Aug 31 2024 Inshal Khan <khanmf@rknec.edu> 1.5-1
+- 
+
 * Sat Aug 31 2024 Inshal Khan <khanmf@rknec.edu> 1.4-1
 - 
 
