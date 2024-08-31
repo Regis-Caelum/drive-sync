@@ -3,7 +3,8 @@ Description=Dsync Daemon
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/dsync-daemon
+ExecStart=/usr/local/bin/dsync-daemon
+Restart=always
 
 [Install]
 WantedBy=multi-user.target
