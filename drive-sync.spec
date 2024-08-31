@@ -1,5 +1,5 @@
 Name:           drive-sync
-Version:        1.43
+Version:        1.44
 Release:        1%{?dist}
 Summary:        Drive Sync CLI and Daemon
 
@@ -90,6 +90,9 @@ systemctl daemon-reload
 pkill dsync-daemon
 
 %changelog
+* Sat Aug 31 2024 Inshal Khan <khanmf@rknec.edu> 1.44-1
+- Add built files (khanmf@rknec.edu)
+
 * Sat Aug 31 2024 Inshal Khan <khanmf@rknec.edu> 1.43-1
 - 
 
