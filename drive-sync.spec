@@ -1,5 +1,5 @@
 Name:           drive-sync
-Version:        1.44
+Version:        1.45
 Release:        1%{?dist}
 Summary:        Drive Sync CLI and Daemon
 
@@ -11,7 +11,7 @@ URL:            https://github.com/Regis-Caelum/drive-sync
 Source0:        %{name}-%{version}.tar.gz
 
 BuildRequires:  gccgo
-BuildRequires:  golang >= 1.23
+BuildRequires:  golang
 
 %description
 This package installs the Drive Sync CLI and a daemon for background synchronization with Google Drive.
@@ -90,6 +90,9 @@ systemctl daemon-reload
 pkill dsync-daemon
 
 %changelog
+* Sat Aug 31 2024 Inshal Khan <khanmf@rknec.edu> 1.45-1
+- 
+
 * Sat Aug 31 2024 Inshal Khan <khanmf@rknec.edu> 1.44-1
 - Add built files (khanmf@rknec.edu)
 
