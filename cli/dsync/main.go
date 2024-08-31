@@ -15,8 +15,7 @@ type cmdGlobal struct {
 func (g *cmdGlobal) initGrpcClient() error {
 	var err error
 	if g.conn == nil {
-
-		g.conn, err = grpc.NewClient("unix:///tmp/dsync.sock", grpc.WithTransportCredentials(insecure.NewCredentials()))
+		g.conn, err = grpc.NewClient(":58295", grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
 			fmt.Printf("Error: %s", err)
 			return fmt.Errorf("failed to connect to dsync daemon: %s", err)
@@ -59,14 +58,14 @@ For help with any of those, simply call them with --help.`)
 	addCmd := &cmdAdd{global: globalCmd}
 	app.AddCommand(addCmd.command())
 
-	authCmd := &cmdAuth{global: globalCmd}
+	authCmd := &cmdLogin{global: globalCmd}
 	app.AddCommand(authCmd.command())
 
 	//authCmd := &cmdAuth{global: globalCmd}
 	//app.AddCommand(authCmd.command())
 
-	app.SetArgs([]string{"add", "dir", "/home/regis/Desktop/projects/test"})
+	//app.SetArgs([]string{"add", "dir"})
 	//app.SetArgs([]string{"get", "list", "-df"})
-	//app.SetArgs([]string{"auth", "login"})
+	//app.SetArgs([]string{"login"})
 	_ = app.Execute()
 }

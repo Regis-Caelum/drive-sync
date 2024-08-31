@@ -30,6 +30,7 @@ func (s *server) SaveToken(ctx context.Context, in *pb.OAuth2Token) (*pb.Empty, 
 	in.Id = 1
 	tx.Save(in)
 	database.CommitTx(tx)
+	token = in
 	log.Println("Transaction Ended")
 	return &pb.Empty{}, nil
 }
@@ -102,12 +103,7 @@ func main() {
 	<-daemonChannel
 	fmt.Println("Watchlist daemon up and running.")
 
-	socketPath := "/tmp/dsync.sock"
-	if err := os.RemoveAll(socketPath); err != nil {
-		panic(err)
-	}
-
-	listen, err := net.Listen("unix", socketPath)
+	listen, err := net.Listen("tcp", ":58295")
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
